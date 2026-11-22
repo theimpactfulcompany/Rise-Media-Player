@@ -15,13 +15,11 @@
     </a>
 </p>
 
-If it's videos, music, discs or even your favourite streaming services - you're sure to love our player: with stunning design and an amazing storage layer that gives you the freedom of having one library for all of your content, combined with almost infinite customisability with settings that are second to none.
-Stream, browse and explore - RiseMP can do it all.
+## Development Hiatus
 
-Created with **WinUI and the latest design ideologies**, **Rise Media Player** is modern while keeping all of the classic features people need. We use **WinUI 2.8 Preview** to keep our user interface, clean, modern and consistent with **Windows 11 UI and UX** - although, the app does work on **Windows 10** too!
-Our own controls and icons give users a truly personalised experience, being able to choose their own icon packs and with features like compact mode, you can use it on any *Windows device!*
+Rise Media Player has been in development hiatus for over 2 years at this point. We're making a comeback soon.
 
-## ▶️ Features
+## Features
 
 * **Music and video playback**: Play music and videos from any source across your device and the internet in high quality
 * **Sorting for songs, albums and videos**: Sort and find any track
@@ -38,9 +36,9 @@ Our own controls and icons give users a truly personalised experience, being abl
 * **Insider exclusives**: Exclusive wallpapers and feature sneak peeks for those enlisted in the programme
 * **Pick up where you left off support**: Support for history and remembering exactly where you were when you last opened the app
 
-## ⬇️ Downloads
+## Downloads
 
-**If you are an Insider already, just click the Download button and you'll be taken to a page to download 😁**
+**If you are an Insider already, just click the Download button and you'll be taken to a page to download **
 In order to learn how to build RiseMP from source, check out [the documentation](./BUILD.md).
 
 [![Download](https://user-images.githubusercontent.com/74561130/137598555-649c77c7-1719-4aa3-8017-8b41283de730.png)](https://github.com/Rise-Software/Rise-Media-Player/releases)    ![divide](https://user-images.githubusercontent.com/74561130/137599566-866fef7d-967e-4ad1-91da-8014d1752b93.png)    [![JoinInsider](https://user-images.githubusercontent.com/74561130/137585885-7f98b4de-5067-41ee-bdb4-2a04fea4b90a.png)](http://www.bit.ly/risesoftinsider)
@@ -84,13 +82,13 @@ This will be enough to build the app, but if you want last.fm support, you shoul
 
 To build Rise Media Player for development, open the `RiseMP.sln` item in Visual Studio. Right-click on the `Rise.App` packaging project in solution explorer and select ‘Set as Startup item’. Then press <kbd>F5</kbd> or your selected build & deploy keybind to build the app and launch it.
 
-## 👷‍♂️ Contributing
+## Contributing
 
 Want to contribute to this project? Let us know with an [issue](https://github.com/Rise-Software/Rise-Media-Player/issues) that communicates your intent to create a [pull request](https://github.com/Rise-Software/Rise-Media-Player/pulls).
 > [!NOTE]
 > **Looking for a place to start?** Check out [our plan for Beta 1](https://github.com/orgs/Rise-Software/projects/3/views/1), which details planned features and changes..
 
-## 🙏 Huge credits
+## Credits
 
 When I started this work, had very little experience, couldn't have even gotten off the ground properly without these wonderful people: 
 * [**Omar Salas (@YourOrdinaryCat)**](https://github.com/yourordinarycat):
@@ -98,7 +96,7 @@ When I started this work, had very little experience, couldn't have even gotten 
 
 And most recently, we've had the wonderful [**Lamparter (@itsWindows11)**](https://github.com/lamparter): doing some great work in getting the project up and running during its development hiatus.
 
-# 🤩 Follow my other projects
+# Follow my other projects
 <table style="width: 100%; border: 0;">
     <tr>
         <td style="width: 30%; padding-right: 20px; vertical-align: top; border: 0;">
