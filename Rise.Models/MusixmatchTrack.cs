@@ -1,11 +1,5 @@
-﻿using Newtonsoft.Json;
-using Newtonsoft.Json.Converters;
+using Newtonsoft.Json;
 using System;
-using System.Collections.Generic;
-using System.Globalization;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Rise.Models
 {
@@ -218,19 +212,7 @@ namespace Rise.Models
 
     public sealed partial class MusixmatchTrack
     {
-        public static MusixmatchTrack FromJson(string json) => JsonConvert.DeserializeObject<MusixmatchTrack>(json, TrackConverter.Settings);
-    }
-
-    internal static class TrackConverter
-    {
-        public static readonly JsonSerializerSettings Settings = new JsonSerializerSettings
-        {
-            MetadataPropertyHandling = MetadataPropertyHandling.Ignore,
-            DateParseHandling = DateParseHandling.None,
-            Converters =
-            {
-                new IsoDateTimeConverter { DateTimeStyles = DateTimeStyles.AssumeUniversal }
-            },
-        };
+        public static MusixmatchTrack FromJson(string json)
+            => JsonConvert.DeserializeObject<MusixmatchTrack>(json, MusixmatchJsonSettings.Default);
     }
 }

@@ -1,10 +1,11 @@
-﻿using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Xaml.Controls;
 using Rise.App.Dialogs;
 using Rise.App.Helpers;
 using Rise.App.ViewModels;
 using Rise.App.Views;
 using Rise.Common.Enums;
+using Rise.Common.Extensions;
 using Rise.Data.ViewModels;
 using System;
 using System.Linq;
@@ -254,8 +255,8 @@ namespace Rise.App.UserControls
         /// </summary>
         public DataTemplateSelector DisplayItemTemplateSelector
         {
-            get => (DataTemplateSelector)GetValue(DisplayItemTemplateProperty);
-            set => SetValue(DisplayItemTemplateProperty, value);
+            get => (DataTemplateSelector)GetValue(DisplayItemTemplateSelectorProperty);
+            set => SetValue(DisplayItemTemplateSelectorProperty, value);
         }
     }
 
@@ -358,6 +359,10 @@ namespace Rise.App.UserControls
     // Constructor, Overrides
     public sealed partial class RiseMediaTransportControls : MediaTransportControls
     {
+        private ButtonBase _propertiesButton;
+        private ButtonBase _equalizerButton;
+        private ButtonBase _castButton;
+
         public RiseMediaTransportControls()
         {
             DefaultStyleKey = typeof(RiseMediaTransportControls);
@@ -367,23 +372,34 @@ namespace Rise.App.UserControls
         {
             base.OnApplyTemplate();
 
+            if (_propertiesButton != null)
+                _propertiesButton.Click -= PropertiesButtonClick;
+            if (_equalizerButton != null)
+                _equalizerButton.Click -= EqualizerButtonClick;
+            if (_castButton != null)
+                _castButton.Click -= CastButtonClick;
+
             if (GetTemplateChild("OverlayButton") is ButtonBase overlayButton)
                 overlayButton.CommandParameter = ApplicationViewMode.Default;
 
             if (GetTemplateChild("MiniViewButton") is ButtonBase miniButton)
                 miniButton.CommandParameter = ApplicationViewMode.CompactOverlay;
 
-            if (GetTemplateChild("InfoPropertiesButton") is ButtonBase propertiesButton)
-                propertiesButton.Click += PropertiesButtonClick;
+            _propertiesButton = GetTemplateChild("InfoPropertiesButton") as ButtonBase;
+            if (_propertiesButton != null)
+                _propertiesButton.Click += PropertiesButtonClick;
 
-            if (GetTemplateChild("EqualizerButton") is ButtonBase equalizerButton)
-                equalizerButton.Click += EqualizerButtonClick;
+            _equalizerButton = GetTemplateChild("EqualizerButton") as ButtonBase;
+            if (_equalizerButton != null)
+                _equalizerButton.Click += EqualizerButtonClick;
 
-            if (GetTemplateChild("CastToButton") is ButtonBase castButton)
-                castButton.Click += CastButtonClick;
+            _castButton = GetTemplateChild("CastToButton") as ButtonBase;
+            if (_castButton != null)
+                _castButton.Click += CastButtonClick;
 
             if (GetTemplateChild("PlaybackSpeedFlyout") is MenuFlyout speedFlyout)
             {
+                speedFlyout.Items.Clear();
                 for (double i = 0.25; i <= 2; i += 0.25)
                 {
                     var itm = new RadioMenuFlyoutItem
@@ -399,6 +415,7 @@ namespace Rise.App.UserControls
 
             if (GetTemplateChild("AddToPlaylistFlyout") is MenuFlyout addToPlaylistFlyout)
             {
+                addToPlaylistFlyout.Items.Clear();
                 var helper = new AddToPlaylistHelper(App.MViewModel.Playlists);
                 helper.AddPlaylistsToFlyout(addToPlaylistFlyout, AddToPlaylistCommand);
             }
@@ -432,22 +449,8 @@ namespace Rise.App.UserControls
             if (currProps == null || currProps.ItemType != MediaPlaybackType.Music)
                 return;
 
-            string loc = currProps.Location;
-            try
-            {
-                var song = MViewModel.Songs.FirstOrDefault(s => s.Location == loc);
-                if (song != null)
-                {
-                    var file = await StorageFile.GetFileFromPathAsync(loc);
-                    var props = new SongPropertiesViewModel(song, file.DateCreated)
-                    {
-                        FileProps = await file.GetBasicPropertiesAsync()
-                    };
-
-                    _ = await SongPropertiesPage.TryShowAsync(props);
-                }
-            }
-            catch { }
+            var song = MViewModel.Songs.FirstOrDefault(s => s.Location == currProps.Location);
+            await MediaPageBase.OpenSongPropertiesAsync(song);
         }
 
         private void EqualizerButtonClick(object sender, RoutedEventArgs e)
@@ -480,14 +483,29 @@ namespace Rise.App.UserControls
 
         private async void OnCastingDeviceSelected(CastingDevicePicker sender, CastingDeviceSelectedEventArgs args)
         {
-            await Dispatcher.RunAsync(CoreDispatcherPriority.Normal, async () =>
+            try
             {
-                var connection = args.SelectedCastingDevice.CreateCastingConnection();
-                await connection.RequestStartCastingAsync(MPViewModel.Player.GetAsCastingSource());
+                await Dispatcher.RunAsync(CoreDispatcherPriority.Normal, async () =>
+                {
+                    try
+                    {
+                        if (!MPViewModel.PlayerCreated)
+                            return;
 
-                sender.CastingDeviceSelected -= OnCastingDeviceSelected;
-                sender.CastingDevicePickerDismissed -= OnCastingDevicePickerDismissed;
-            });
+                        var connection = args.SelectedCastingDevice.CreateCastingConnection();
+                        _ = await connection.RequestStartCastingAsync(MPViewModel.Player.GetAsCastingSource());
+                    }
+                    finally
+                    {
+                        sender.CastingDeviceSelected -= OnCastingDeviceSelected;
+                        sender.CastingDevicePickerDismissed -= OnCastingDevicePickerDismissed;
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                ex.WriteToOutput();
+            }
         }
 
         private void OnCastingDevicePickerDismissed(CastingDevicePicker sender, object args)
@@ -498,6 +516,9 @@ namespace Rise.App.UserControls
 
         [RelayCommand]
         private void UpdatePlaybackSpeed(double speed)
-            => MPViewModel.Player.PlaybackSession.PlaybackRate = speed;
+        {
+            if (MPViewModel.PlayerCreated)
+                MPViewModel.Player.PlaybackSession.PlaybackRate = speed;
+        }
     }
 }

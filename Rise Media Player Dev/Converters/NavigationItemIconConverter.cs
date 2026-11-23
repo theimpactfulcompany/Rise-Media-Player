@@ -1,4 +1,4 @@
-﻿using Rise.Data.Navigation;
+using Rise.Data.Navigation;
 using System;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Data;
@@ -11,11 +11,11 @@ namespace Rise.App.Converters
     /// </summary>
     public sealed class NavigationItemIconConverter : IValueConverter
     {
-        private readonly string IconPack = App.SViewModel.IconPack;
-
         public object Convert(object value, Type targetType, object parameter, string language)
         {
-            var item = (NavigationItemDestination)value;
+            if (value is not NavigationItemDestination item)
+                return null;
+
             if (Uri.TryCreate(item.DefaultIcon, UriKind.Absolute, out var uri))
             {
                 return new BitmapIcon
@@ -25,19 +25,18 @@ namespace Rise.App.Converters
                 };
             }
 
-            if (string.IsNullOrEmpty(IconPack))
+            string iconPack = App.SViewModel.IconPack;
+            if (string.IsNullOrEmpty(iconPack))
                 return new FontIcon { Glyph = item.DefaultIcon };
 
             return new BitmapIcon
             {
                 ShowAsMonochrome = false,
-                UriSource = new($"ms-appx:///Assets/NavigationView/{item.Id}/{IconPack}.png")
+                UriSource = new($"ms-appx:///Assets/NavigationView/{item.Id}/{iconPack}.png")
             };
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, string language)
-        {
-            throw new NotImplementedException();
-        }
+            => throw new NotImplementedException();
     }
 }

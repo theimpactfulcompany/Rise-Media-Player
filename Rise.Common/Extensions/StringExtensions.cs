@@ -1,4 +1,4 @@
-﻿namespace Rise.Common.Extensions
+namespace Rise.Common.Extensions
 {
     public static class StringExtensions
     {
@@ -15,7 +15,7 @@
                 int charLocation = text.IndexOf(stopAt);
                 if (charLocation > 0)
                 {
-                    result = text.Remove(charLocation);
+                    result = text.Substring(0, charLocation);
                     return true;
                 }
             }

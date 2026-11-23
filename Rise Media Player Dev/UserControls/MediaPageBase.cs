@@ -1,8 +1,11 @@
-﻿using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Input;
 using Rise.App.Helpers;
 using Rise.App.ViewModels;
 using Rise.App.Views;
 using Rise.App.Views.Albums.Properties;
+using Rise.Common.Constants;
+using Rise.Common.Extensions;
+using Rise.Common.Extensions.Markup;
 using Rise.Common.Helpers;
 using Rise.Common.Interfaces;
 using Rise.Data.Collections;
@@ -15,9 +18,11 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Windows.Storage;
+using Windows.Storage.Pickers;
 using Windows.System;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
+using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Navigation;
 
 namespace Rise.App.UserControls
@@ -133,14 +138,21 @@ namespace Rise.App.UserControls
         /// <summary>
         /// Opens the properties page for the provided song.
         /// </summary>
-        public async Task EditSongAsync(SongViewModel song)
+        public static async Task OpenSongPropertiesAsync(SongViewModel song)
         {
+            if (song == null)
+                return;
+
             try
             {
                 StorageFile file = await StorageFile.GetFileFromPathAsync(song.Location);
                 if (file != null)
                 {
-                    SongPropertiesViewModel props = new(song, file.DateCreated)
+                    SongPropertiesViewModel props = new(
+                        song,
+                        file.DateCreated,
+                        App.MViewModel.SaveSongChangesAsync,
+                        App.MViewModel.CancelEditsAsync)
                     {
                         FileProps = await file.GetBasicPropertiesAsync()
                     };
@@ -148,11 +160,14 @@ namespace Rise.App.UserControls
                     _ = await SongPropertiesPage.TryShowAsync(props);
                 }
             }
-            catch
+            catch (Exception ex)
             {
-
+                ex.WriteToOutput();
             }
         }
+
+        public Task EditSongAsync(SongViewModel song)
+            => OpenSongPropertiesAsync(song);
 
         /// <summary>
         /// Opens the properties page for the provided album.
@@ -321,5 +336,105 @@ namespace Rise.App.UserControls
 
         protected override void OnNavigatedFrom(NavigationEventArgs e)
             => NavigationHelper.OnNavigatedFrom(e);
+    }
+
+    // Shared UI helpers
+    public partial class MediaPageBase
+    {
+        public static void HandleMenuFlyoutOpening<TItem>(object sender, ListViewBase containerHost, Action<TItem> setSelected)
+        {
+            if (sender is not MenuFlyout flyout)
+                return;
+
+            var item = flyout.Target != null ? containerHost.ItemFromContainer(flyout.Target) : null;
+            if (item is TItem typedItem)
+                setSelected(typedItem);
+            else
+                flyout.Hide();
+        }
+
+        protected void HandleDoubleTappedPlay<TItem>(DoubleTappedRoutedEventArgs e)
+        {
+            if ((e.OriginalSource as FrameworkElement)?.DataContext is TItem item)
+                MediaViewModel.PlayFromItemCommand.Execute(item);
+        }
+
+        public static async Task ShowManageFoldersDialogAsync()
+        {
+            try
+            {
+                ContentDialog dialog = new()
+                {
+                    Title = ResourceHelper.GetString("/Settings/MediaLibraryManageFoldersTitle"),
+                    CloseButtonText = ResourceHelper.GetString("Close"),
+                    Content = new Settings.MediaSourcesPage()
+                };
+                _ = await dialog.ShowAsync();
+            }
+            catch (Exception ex)
+            {
+                ex.WriteToOutput();
+            }
+        }
+
+        public static async Task<string> PickAndCopyImageAsync(string filePrefix)
+        {
+            try
+            {
+                var picker = new FileOpenPicker
+                {
+                    ViewMode = PickerViewMode.Thumbnail,
+                    SuggestedStartLocation = PickerLocationId.PicturesLibrary
+                };
+
+                picker.FileTypeFilter.Add(".jpg");
+                picker.FileTypeFilter.Add(".jpeg");
+                picker.FileTypeFilter.Add(".png");
+
+                var file = await picker.PickSingleFileAsync();
+                if (file == null)
+                    return null;
+
+                try
+                {
+                    var img = await file.GetBitmapAsync();
+                    if (img == null)
+                        return null;
+
+                    img.Dispose();
+                }
+                catch
+                {
+                    return null;
+                }
+
+                string filename = $"{filePrefix}{file.FileType}";
+                _ = await file.CopyAsync(ApplicationData.Current.LocalFolder,
+                    filename, NameCollisionOption.ReplaceExisting);
+
+                return $"ms-appdata:///local/{filename}";
+            }
+            catch (Exception ex)
+            {
+                ex.WriteToOutput();
+                return null;
+            }
+        }
+
+        public static bool MovePlaylistItem<T>(IList<T> items, object tag, int offset)
+            where T : class
+        {
+            if (items == null || tag is not T item)
+                return false;
+
+            int index = items.IndexOf(item);
+            int targetIndex = index + offset;
+            if (index < 0 || targetIndex < 0 || targetIndex >= items.Count)
+                return false;
+
+            items.RemoveAt(index);
+            items.Insert(targetIndex, item);
+            return true;
+        }
     }
 }

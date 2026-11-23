@@ -1,4 +1,4 @@
-using System.Text.Json.Serialization;
+using Newtonsoft.Json;
 
 namespace Rise.Data.Navigation
 {
@@ -32,7 +32,7 @@ namespace Rise.Data.Navigation
 
         /// <summary>
         /// A set of items contained within this item. This property
-        /// is not serialized by <see cref="System.Text.Json.JsonSerializer"/>.
+        /// is not serialized.
         /// </summary>
         [JsonIgnore]
         public object Children { get; set; }

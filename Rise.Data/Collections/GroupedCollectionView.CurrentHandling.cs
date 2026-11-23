@@ -1,4 +1,4 @@
-﻿using Windows.UI.Xaml.Data;
+using Windows.UI.Xaml.Data;
 
 namespace Rise.Data.Collections;
 
@@ -13,14 +13,14 @@ public sealed partial class GroupedCollectionView
             return null;
         }
     }
-    public int CurrentPosition { get; private set; }
+    public int CurrentPosition { get; private set; } = -1;
 
     public bool IsCurrentBeforeFirst => CurrentPosition < 0;
     public bool IsCurrentAfterLast => CurrentPosition >= _view.Count;
 
     public bool MoveCurrentTo(object item)
     {
-        if (item == CurrentItem)
+        if (Equals(item, CurrentItem))
             return true;
         return MoveCurrentToIndex(_view.IndexOf(item));
     }

@@ -1,4 +1,4 @@
-﻿using Rise.App.Converters;
+using Rise.App.Converters;
 using Rise.App.UserControls;
 using Rise.App.ViewModels;
 using Rise.Common.Constants;
@@ -60,19 +60,16 @@ namespace Rise.App.Views
         private void NavigationHelper_LoadState(object sender, LoadStateEventArgs e)
         {
             if (e.NavigationParameter is Guid id)
-            {
-                SelectedArtist = App.MViewModel.Artists.
-                    FirstOrDefault(a => a.Model.Id == id);
-            }
+                SelectedArtist = App.MViewModel.Artists.FirstOrDefault(a => a.Model.Id == id);
             else if (e.NavigationParameter is string str)
-            {
-                SelectedArtist = App.MViewModel.Artists.
-                    FirstOrDefault(a => a.Name == str);
-            }
+                SelectedArtist = App.MViewModel.Artists.FirstOrDefault(a => a.Name == str);
 
             CreateViewModel("GSongAlbum|SongDisc|SongTrack", SortDirection.Ascending, false, IsFromArtist, App.MViewModel.Songs);
             bool IsFromArtist(object s)
             {
+                if (SelectedArtist == null)
+                    return false;
+
                 var song = (SongViewModel)s;
                 return song.Artist == SelectedArtist.Name || song.AlbumArtist == SelectedArtist.Name;
             }
@@ -80,34 +77,54 @@ namespace Rise.App.Views
 
         private void OnMainListLoaded(object sender, RoutedEventArgs e)
         {
+            if (SelectedArtist == null || string.IsNullOrEmpty(SelectedArtist.Picture))
+                return;
+
             var surface = LoadedImageSurface.StartLoadFromUri(new(SelectedArtist.Picture));
             (_propSet, _backgroundVisual) = MainList.CreateParallaxGradientVisual(surface, BackgroundHost);
         }
 
         private async void OnPageLoaded(object sender, RoutedEventArgs e)
         {
-            ArtistDuration.Text = await Task.Run(() => TimeSpanToString.GetShortFormat(TimeSpan.FromSeconds(MediaViewModel.Items.Cast<SongViewModel>().Select(s => s.Length).Aggregate((t, t1) => t + t1).TotalSeconds)));
+            var totalDuration = MediaViewModel?.Items
+                .OfType<SongViewModel>()
+                .Aggregate(TimeSpan.Zero, (acc, s) => acc + s.Length) ?? TimeSpan.Zero;
 
-            string name = SelectedArtist.Name;
-            if (!SViewModel.FetchOnlineData ||
-                !WebHelpers.IsInternetAccessAvailable() ||
-                name == ResourceHelper.GetString("UnknownArtistResource"))
+            ArtistDuration.Text = TimeSpanToString.GetShortFormat(totalDuration);
+
+            if (SelectedArtist == null)
             {
-                VisualStateManager.GoToState(this, "LastFMUnavailableState", true);
+                _ = VisualStateManager.GoToState(this, "LastFMUnavailableState", true);
+                return;
             }
-            else
+
+            try
             {
-                string genre = await GetGenreFromArtistAsync(name);
-                SongAlbums.Text += $" • {genre}";
+                string name = SelectedArtist.Name;
+                if (!SViewModel.FetchOnlineData ||
+                    !WebHelpers.IsInternetAccessAvailable() ||
+                    name == ResourceHelper.GetString("UnknownArtistResource"))
+                {
+                    _ = VisualStateManager.GoToState(this, "LastFMUnavailableState", true);
+                }
+                else
+                {
+                    string genre = await GetGenreFromArtistAsync(name);
+                    SongAlbums.Text += $" • {genre}";
 
-                TopTracks.ItemsSource = await GetTopTracksAsync(name);
-                NoListeners.Text = await GetMonthlyListenersAsync(name);
+                    TopTracks.ItemsSource = await GetTopTracksAsync(name);
+                    NoListeners.Text = await GetMonthlyListenersAsync(name);
 
-                ShortBio = await GetArtistBioAsync(name, true);
-                AboutArtist.Text = ShortBio;
+                    ShortBio = await GetArtistBioAsync(name, true);
+                    AboutArtist.Text = ShortBio;
 
-                if (string.IsNullOrWhiteSpace(ShortBio))
-                    VisualStateManager.GoToState(this, "ArtistBioUnavailableState", true);
+                    if (string.IsNullOrWhiteSpace(ShortBio))
+                        _ = VisualStateManager.GoToState(this, "ArtistBioUnavailableState", true);
+                }
+            }
+            catch (Exception ex)
+            {
+                ex.WriteToOutput();
             }
         }
     }
@@ -116,46 +133,42 @@ namespace Rise.App.Views
     public sealed partial class ArtistSongsPage
     {
         private void MainList_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
-        {
-            if ((e.OriginalSource as FrameworkElement).DataContext is SongViewModel song)
-                MediaViewModel.PlayFromItemCommand.Execute(song);
-        }
+            => HandleDoubleTappedPlay<SongViewModel>(e);
 
         private void SongFlyout_Opening(object sender, object e)
-        {
-            var fl = sender as MenuFlyout;
-            var cont = MainList.ItemFromContainer(fl.Target);
-
-            if (cont == null)
-                fl.Hide();
-            else
-                SelectedItem = (SongViewModel)cont;
-        }
+            => HandleMenuFlyoutOpening<SongViewModel>(sender, MainList, item => SelectedItem = item);
 
         private void AskDiscy_Click(object sender, RoutedEventArgs e)
-        {
-            DiscyOnSong.IsOpen = true;
-        }
+            => DiscyOnSong.IsOpen = true;
 
         private async void ReadMoreAbout_Click(object sender, RoutedEventArgs e)
         {
-            if (ShowingSummarized)
-            {
-                if (string.IsNullOrEmpty(LongBio))
-                    LongBio = await GetArtistBioAsync(SelectedArtist.Name, false);
+            if (SelectedArtist == null)
+                return;
 
-                AboutArtist.Text = LongBio;
-                ReadMoreAbout.Content = ResourceHelper.GetString("ReadLess");
-            }
-            else
+            try
             {
-                AboutArtist.Text = ShortBio;
-                ReadMoreAbout.Content = ResourceHelper.GetString("ReadMore");
-            }
+                if (ShowingSummarized)
+                {
+                    if (string.IsNullOrEmpty(LongBio))
+                        LongBio = await GetArtistBioAsync(SelectedArtist.Name, false);
 
-            ShowingSummarized = !ShowingSummarized;
+                    AboutArtist.Text = LongBio;
+                    ReadMoreAbout.Content = ResourceHelper.GetString("ReadLess");
+                }
+                else
+                {
+                    AboutArtist.Text = ShortBio;
+                    ReadMoreAbout.Content = ResourceHelper.GetString("ReadMore");
+                }
+
+                ShowingSummarized = !ShowingSummarized;
+            }
+            catch (Exception ex)
+            {
+                ex.WriteToOutput();
+            }
         }
-
 
         private void BackgroundHost_SizeChanged(object sender, SizeChangedEventArgs e)
         {
@@ -163,26 +176,42 @@ namespace Rise.App.Views
             _backgroundVisual.Size = new Vector2((float)e.NewSize.Width, (float)BackgroundHost.Height);
         }
 
+        private static string BuildLastFmArtistInfoUrl(string method, string artist, string extraParams = "")
+            => $"{URLs.LastFM}{method}&artist={Uri.EscapeDataString(artist ?? string.Empty)}&api_key={LastFM.Key}{extraParams}";
+
+        private static async Task<XmlDocument> FetchLastFmXmlAsync(string url)
+        {
+            using var client = new HttpClient();
+            var res = await client.TryGetStringAsync(new(url));
+            if (!res.Succeeded || string.IsNullOrWhiteSpace(res.Value))
+                return null;
+
+            var doc = new XmlDocument();
+            doc.LoadXml(res.Value);
+            return doc;
+        }
+
         private async Task<List<Track>> GetTopTracksAsync(string artist)
         {
             try
             {
-                string lfmUrl = URLs.LastFM + "artist.gettoptracks&artist=" + artist + "&api_key=" + LastFM.Key + "&limit=8";
-                using (var client = new HttpClient())
+                string lfmUrl = BuildLastFmArtistInfoUrl("artist.gettoptracks", artist, "&limit=8");
+                using var client = new HttpClient();
+                var result = await client.TryGetStringAsync(new(lfmUrl));
+                if (result.Succeeded && !string.IsNullOrWhiteSpace(result.Value))
                 {
-                    var result = await client.TryGetStringAsync(new(lfmUrl));
-                    if (result.Succeeded)
-                    {
-                        StringReader strReader = new(result.Value);
-                        XmlSerializer serializer = new(typeof(LFM));
-                        XmlTextReader xmlReader = new(strReader);
+                    using StringReader strReader = new(result.Value);
+                    using XmlTextReader xmlReader = new(strReader);
+                    XmlSerializer serializer = new(typeof(LFM));
 
-                        var lfm = (LFM)serializer.Deserialize(xmlReader);
-                        return lfm.Toptracks.Track;
-                    }
+                    var lfm = (LFM)serializer.Deserialize(xmlReader);
+                    return lfm?.Toptracks?.Track;
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                ex.WriteToOutput();
+            }
 
             return null;
         }
@@ -191,24 +220,18 @@ namespace Rise.App.Views
         {
             try
             {
-                var textInfo = new CultureInfo(ApplicationLanguages.PrimaryLanguageOverride).TextInfo;
-                string lfmUrl = URLs.LastFM + "artist.getinfo&artist=" + artist + "&api_key=" + LastFM.Key;
+                string lang = ApplicationLanguages.PrimaryLanguageOverride;
+                var culture = string.IsNullOrWhiteSpace(lang) ? CultureInfo.CurrentCulture : new CultureInfo(lang);
+                var doc = await FetchLastFmXmlAsync(BuildLastFmArtistInfoUrl("artist.getinfo", artist));
 
-                using (var client = new HttpClient())
-                {
-                    var res = await client.TryGetStringAsync(new(lfmUrl));
-                    if (res.Succeeded)
-                    {
-                        var doc = new XmlDocument();
-                        doc.LoadXml(res.Value);
-
-                        var node = doc.DocumentElement.SelectSingleNode("/lfm/artist/tags/tag/name");
-                        if (node != null)
-                            return textInfo.ToTitleCase(node.InnerText);
-                    }
-                }
+                var node = doc?.DocumentElement?.SelectSingleNode("/lfm/artist/tags/tag/name");
+                if (node != null)
+                    return culture.TextInfo.ToTitleCase(node.InnerText);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                ex.WriteToOutput();
+            }
 
             return ResourceHelper.GetString("UnknownGenreResource");
         }
@@ -217,38 +240,25 @@ namespace Rise.App.Views
         {
             try
             {
-                var textInfo = new CultureInfo(ApplicationLanguages.PrimaryLanguageOverride).TextInfo;
-                string lfmUrl = URLs.LastFM + "artist.getinfo&artist=" + artist + "&api_key=" + LastFM.Key + "&autocorrect=1";
+                var doc = await FetchLastFmXmlAsync(BuildLastFmArtistInfoUrl("artist.getinfo", artist, "&autocorrect=1"));
+                var node = doc?.DocumentElement?.SelectSingleNode(summarized ? "/lfm/artist/bio/summary" : "/lfm/artist/bio/content");
 
-                using (var client = new HttpClient())
+                if (node != null)
                 {
-                    var res = await client.TryGetStringAsync(new(lfmUrl));
-                    if (res.Succeeded)
-                    {
-                        var doc = new XmlDocument();
-                        doc.LoadXml(res.Value);
+                    var urlNode = doc.DocumentElement.SelectSingleNode("/lfm/artist/url");
+                    string bioText = node.InnerText;
+                    if (urlNode != null)
+                        bioText = bioText.Replace($"<a href=\"{urlNode.InnerText}\">Read more on Last.fm</a>", string.Empty);
 
-                        XmlNode node;
-                        if (summarized)
-                            node = doc.DocumentElement.SelectSingleNode("/lfm/artist/bio/summary");
-                        else
-                            node = doc.DocumentElement.SelectSingleNode("/lfm/artist/bio/content");
-
-                        if (node != null)
-                        {
-                            var url = doc.DocumentElement.SelectSingleNode("/lfm/artist/url");
-                            var noUrl = node.InnerText.
-                                Replace("<a href=\"" + url.InnerText + "\">Read more on Last.fm</a>", string.Empty);
-
-                            if (summarized)
-                                return noUrl;
-
-                            return noUrl.Replace(". User-contributed text is available under the Creative Commons By-SA License; additional terms may apply.", string.Empty);
-                        }
-                    }
+                    return summarized
+                        ? bioText
+                        : bioText.Replace(". User-contributed text is available under the Creative Commons By-SA License; additional terms may apply.", string.Empty);
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                ex.WriteToOutput();
+            }
 
             return ResourceHelper.GetString("NoArtistInfo");
         }
@@ -257,24 +267,15 @@ namespace Rise.App.Views
         {
             try
             {
-                var textInfo = new CultureInfo(ApplicationLanguages.PrimaryLanguageOverride).TextInfo;
-                string lfmUrl = URLs.LastFM + "artist.getinfo&artist=" + artist + "&api_key=" + LastFM.Key;
-
-                using (var client = new HttpClient())
-                {
-                    var res = await client.TryGetStringAsync(new(lfmUrl));
-                    if (res.Succeeded)
-                    {
-                        var doc = new XmlDocument();
-                        doc.LoadXml(res.Value);
-
-                        var node = doc.DocumentElement.SelectSingleNode("/lfm/artist/stats/listeners");
-                        if (node != null && long.TryParse(node.InnerText, out long num))
-                            return string.Format(ResourceHelper.GetString("NListeners"), FormatNumber.Format(num));
-                    }
-                }
+                var doc = await FetchLastFmXmlAsync(BuildLastFmArtistInfoUrl("artist.getinfo", artist));
+                var node = doc?.DocumentElement?.SelectSingleNode("/lfm/artist/stats/listeners");
+                if (node != null && long.TryParse(node.InnerText, out long num))
+                    return string.Format(ResourceHelper.GetString("NListeners"), FormatNumber.Format(num));
             }
-            catch { }
+            catch (Exception ex)
+            {
+                ex.WriteToOutput();
+            }
 
             return string.Empty;
         }

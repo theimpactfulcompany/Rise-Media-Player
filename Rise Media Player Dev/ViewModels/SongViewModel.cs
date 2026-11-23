@@ -1,4 +1,4 @@
-﻿using Newtonsoft.Json;
+using Newtonsoft.Json;
 using Rise.App.Helpers;
 using Rise.Common.Constants;
 using Rise.Common.Extensions;
@@ -211,6 +211,8 @@ namespace Rise.App.ViewModels
                 {
                     Model.Location = value;
                     OnPropertyChanged();
+                    OnPropertyChanged(nameof(FileName));
+                    OnPropertyChanged(nameof(Extension));
                 }
             }
         }
@@ -310,9 +312,11 @@ namespace Rise.App.ViewModels
                 try
                 {
                     var file = await StorageFile.GetFileFromPathAsync(Location);
-                    var taglibFile = await Task.Run(() => TagLib.File.Create(new UwpStorageFileAbstraction(file)));
-
-                    return (await Task.Run(() => taglibFile.Tag)).Lyrics;
+                    return await Task.Run(() =>
+                    {
+                        using var taglibFile = TagLib.File.Create(new UwpStorageFileAbstraction(file));
+                        return taglibFile.Tag.Lyrics;
+                    });
                 }
                 catch (Exception e)
                 {
@@ -323,37 +327,7 @@ namespace Rise.App.ViewModels
         }
         #endregion
 
-        #region Backend
-        /// <summary>
-        /// Saves item data to the backend.
-        /// </summary>
-        public async Task SaveAsync(bool queue = false)
-        {
-            if (!App.MViewModel.Songs.Contains(this))
-            {
-                App.MViewModel.Songs.Add(this);
-            }
-
-            if (queue)
-            {
-                NewRepository.Repository.QueueUpsert(Model);
-            }
-            else
-            {
-                await NewRepository.Repository.UpsertAsync(Model);
-            }
-        }
-        #endregion
-
         #region Editing
-        /// <summary>
-        /// Discards any edits that have been made, restoring the original values.
-        /// </summary>
-        public async Task CancelEditsAsync()
-        {
-            Model = await NewRepository.Repository.GetItemAsync<Song>(Model.Id);
-        }
-
         /// <summary>
         /// Edits lyrics of a song in the file metadata.
         /// </summary>
@@ -364,12 +338,12 @@ namespace Rise.App.ViewModels
             try
             {
                 var file = await StorageFile.GetFileFromPathAsync(Location);
-                var taglibFile = await Task.Run(() => TagLib.File.Create(new UwpStorageFileAbstraction(file)));
-
-                var tag = await Task.Run(() => taglibFile.Tag);
-
-                tag.Lyrics = lyrics;
-                await Task.Run(() => taglibFile.Save());
+                await Task.Run(() =>
+                {
+                    using var taglibFile = TagLib.File.Create(new UwpStorageFileAbstraction(file));
+                    taglibFile.Tag.Lyrics = lyrics;
+                    taglibFile.Save();
+                });
 
                 return true;
             }
@@ -405,7 +379,14 @@ namespace Rise.App.ViewModels
     {
         public static Task<SongViewModel> AsSongAsync(this MediaPlaybackItem item)
         {
+            if (item == null)
+                return Task.FromResult<SongViewModel>(null);
+
             var displayProps = item.GetDisplayProperties();
+            var customProps = item.Source?.CustomProperties;
+            string location = customProps != null && customProps.TryGetValue("Location", out var loc) && loc is string locStr
+                ? locStr
+                : item.Source?.Uri?.ToString() ?? string.Empty;
 
             var song = new SongViewModel
             {
@@ -414,8 +395,8 @@ namespace Rise.App.ViewModels
                 Album = displayProps.MusicProperties.AlbumTitle,
                 AlbumArtist = displayProps.MusicProperties.AlbumArtist,
                 Genres = string.Join(";", displayProps.MusicProperties.Genres),
-                Location = item.Source.Uri.ToString(),
-                Length = (TimeSpan)item.Source.Duration,
+                Location = location,
+                Length = item.Source?.Duration ?? TimeSpan.Zero,
                 Thumbnail = URIs.MusicThumb
             };
 

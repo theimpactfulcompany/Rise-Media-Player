@@ -1,7 +1,7 @@
-﻿using Rise.App.Dialogs;
+using Rise.App.Dialogs;
 using Rise.App.UserControls;
 using Rise.App.ViewModels;
-using Rise.Common.Extensions.Markup;
+using Rise.Common.Extensions;
 using Rise.Common.Helpers;
 using Rise.Data.Collections;
 using Rise.Data.ViewModels;
@@ -54,42 +54,38 @@ namespace Rise.App.Views
         {
             if (e.ClickedItem is VideoViewModel video && !KeyboardHelpers.IsCtrlPressed())
             {
-                await MPViewModel.PlaySingleItemAsync(video);
-                if (Window.Current.Content is Frame rootFrame)
-                    rootFrame.Navigate(typeof(NowPlayingPage));
+                try
+                {
+                    await MPViewModel.PlaySingleItemAsync(video);
+                    if (Window.Current.Content is Frame rootFrame)
+                        _ = rootFrame.Navigate(typeof(NowPlayingPage));
+                }
+                catch (Exception ex)
+                {
+                    ex.WriteToOutput();
+                }
             }
         }
 
         private void MenuFlyout_Opening(object sender, object e)
-        {
-            var fl = sender as MenuFlyout;
-            var cont = MainGrid.ItemFromContainer(fl.Target);
-
-            if (cont == null)
-                fl.Hide();
-            else
-                SelectedItem = (VideoViewModel)cont;
-        }
+            => HandleMenuFlyoutOpening<VideoViewModel>(sender, MainGrid, item => SelectedItem = item);
 
         private void AskDiscy_Click(object sender, RoutedEventArgs e)
-        {
-            DiscyOnVideo.IsOpen = true;
-        }
+            => DiscyOnVideo.IsOpen = true;
 
         private async void PlayFromUrl_Click(object sender, RoutedEventArgs e)
         {
-            _ = await new VideoStreamingDialog().ShowAsync();
+            try
+            {
+                _ = await new VideoStreamingDialog().ShowAsync();
+            }
+            catch (Exception ex)
+            {
+                ex.WriteToOutput();
+            }
         }
 
         private async void AddFolders_Click(object sender, RoutedEventArgs e)
-        {
-            ContentDialog dialog = new()
-            {
-                Title = ResourceHelper.GetString("/Settings/MediaLibraryManageFoldersTitle"),
-                CloseButtonText = ResourceHelper.GetString("Close"),
-                Content = new Settings.MediaSourcesPage()
-            };
-            _ = await dialog.ShowAsync();
-        }
+            => await ShowManageFoldersDialogAsync();
     }
 }

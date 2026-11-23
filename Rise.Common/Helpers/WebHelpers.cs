@@ -1,4 +1,4 @@
-﻿using Rise.Common.Constants;
+using Rise.Common.Constants;
 using Rise.Common.Extensions;
 using System;
 using System.Threading.Tasks;
@@ -28,110 +28,107 @@ namespace Rise.Common.Helpers
         /// <summary>
         /// Creates a playback item which sources from the provided song URI.
         /// </summary>
-        public static async Task<MediaPlaybackItem> GetSongFromUriAsync(Uri uri)
-        {
-            var source = MediaSource.CreateFromUri(uri);
-            await source.OpenAsync();
-
-            var media = new MediaPlaybackItem(source);
-            var props = media.GetDisplayProperties();
-
-            props.Type = MediaPlaybackType.Music;
-            props.MusicProperties.Title = props.MusicProperties.Title.ReplaceIfNullOrWhiteSpace("Online song");
-            props.MusicProperties.Artist = props.MusicProperties.Artist.ReplaceIfNullOrWhiteSpace("UnknownArtistResource");
-
-            source.CustomProperties["Title"] = props.MusicProperties.Title;
-            source.CustomProperties["Artists"] = props.MusicProperties.Artist;
-            source.CustomProperties["Length"] = source.Duration;
-
-            props.Thumbnail ??= RandomAccessStreamReference.CreateFromUri(new(URIs.MusicThumb));
-
-            media.ApplyDisplayProperties(props);
-            return media;
-        }
+        public static Task<MediaPlaybackItem> GetSongFromUriAsync(Uri uri)
+            => CreateSongFromUriAsync(uri, openSource: true);
 
         /// <summary>
         /// Creates a playback item which sources from the provided song URI,
         /// and uses the provided metadata for display properties.
         /// </summary>
         public static Task<MediaPlaybackItem> GetSongFromUriAsync(Uri uri, string title = null, string subtitle = null, string thumbnail = null)
-        {
-            string actualTitle = title.ReplaceIfNullOrWhiteSpace("Online song");
-            string actualSubtitle = subtitle.ReplaceIfNullOrWhiteSpace("UnknownArtistResource");
-
-            var media = GetMediaFromUri(uri, actualTitle, actualSubtitle);
-            var props = media.GetDisplayProperties();
-
-            props.Type = MediaPlaybackType.Music;
-            props.MusicProperties.Title = actualTitle;
-            props.MusicProperties.Artist = actualSubtitle;
-
-            Uri thumb = new(thumbnail.ReplaceIfNullOrWhiteSpace(URIs.MusicThumb));
-            props.Thumbnail ??= RandomAccessStreamReference.CreateFromUri(thumb);
-
-            media.ApplyDisplayProperties(props);
-            return Task.FromResult(media);
-        }
+            => CreateSongFromUriAsync(uri, openSource: false, title, subtitle, thumbnail);
 
         /// <summary>
         /// Creates a playback item which sources from the provided video URI.
         /// </summary>
-        public static async Task<MediaPlaybackItem> GetVideoFromUriAsync(Uri uri)
-        {
-            var source = MediaSource.CreateFromUri(uri);
-            await source.OpenAsync();
-
-            var media = new MediaPlaybackItem(source);
-            var props = media.GetDisplayProperties();
-
-            props.Type = MediaPlaybackType.Video;
-            props.VideoProperties.Title = props.VideoProperties.Title.ReplaceIfNullOrWhiteSpace("Online video");
-            props.VideoProperties.Subtitle = props.VideoProperties.Subtitle.ReplaceIfNullOrWhiteSpace("UnknownArtistResource");
-
-            source.CustomProperties["Title"] = props.VideoProperties.Title;
-            source.CustomProperties["Artists"] = props.VideoProperties.Subtitle;
-            source.CustomProperties["Length"] = source.Duration;
-
-            props.Thumbnail ??= RandomAccessStreamReference.CreateFromUri(new(URIs.VideoThumb));
-
-            media.ApplyDisplayProperties(props);
-            return media;
-        }
+        public static Task<MediaPlaybackItem> GetVideoFromUriAsync(Uri uri)
+            => CreateVideoFromUriAsync(uri, openSource: true);
 
         /// <summary>
         /// Creates a playback item which sources from the provided video URI,
         /// and uses the provided metadata for display properties.
         /// </summary>
         public static Task<MediaPlaybackItem> GetVideoFromUriAsync(Uri uri, string title = null, string subtitle = null, string thumbnail = null)
-        {
-            string actualTitle = title.ReplaceIfNullOrWhiteSpace("Online video");
-            string actualSubtitle = subtitle.ReplaceIfNullOrWhiteSpace("UnknownArtistResource");
+            => CreateVideoFromUriAsync(uri, openSource: false, title, subtitle, thumbnail);
 
-            var media = GetMediaFromUri(uri, actualTitle, actualSubtitle);
+        private static async Task<MediaPlaybackItem> CreateSongFromUriAsync(
+            Uri uri,
+            bool openSource,
+            string title = null,
+            string subtitle = null,
+            string thumbnail = null)
+        {
+            if (uri == null)
+                throw new ArgumentNullException(nameof(uri));
+
+            var source = MediaSource.CreateFromUri(uri);
+            if (openSource)
+                await source.OpenAsync();
+
+            var media = new MediaPlaybackItem(source);
+            var props = media.GetDisplayProperties();
+
+            props.Type = MediaPlaybackType.Music;
+            string actualTitle = (title ?? props.MusicProperties.Title).ReplaceIfNullOrWhiteSpace("Online song");
+            string actualArtist = (subtitle ?? props.MusicProperties.Artist).ReplaceIfNullOrWhiteSpace("UnknownArtistResource");
+
+            props.MusicProperties.Title = actualTitle;
+            props.MusicProperties.Artist = actualArtist;
+            ApplyCommonMediaProperties(source, uri, actualTitle, actualArtist, props, thumbnail, URIs.MusicThumb);
+
+            media.ApplyDisplayProperties(props);
+            return media;
+        }
+
+        private static async Task<MediaPlaybackItem> CreateVideoFromUriAsync(
+            Uri uri,
+            bool openSource,
+            string title = null,
+            string subtitle = null,
+            string thumbnail = null)
+        {
+            if (uri == null)
+                throw new ArgumentNullException(nameof(uri));
+
+            var source = MediaSource.CreateFromUri(uri);
+            if (openSource)
+                await source.OpenAsync();
+
+            var media = new MediaPlaybackItem(source);
             var props = media.GetDisplayProperties();
 
             props.Type = MediaPlaybackType.Video;
+            string actualTitle = (title ?? props.VideoProperties.Title).ReplaceIfNullOrWhiteSpace("Online video");
+            string actualSubtitle = (subtitle ?? props.VideoProperties.Subtitle).ReplaceIfNullOrWhiteSpace("UnknownArtistResource");
+
             props.VideoProperties.Title = actualTitle;
             props.VideoProperties.Subtitle = actualSubtitle;
-
-            Uri thumb = new(thumbnail.ReplaceIfNullOrWhiteSpace(URIs.VideoThumb));
-            props.Thumbnail ??= RandomAccessStreamReference.CreateFromUri(thumb);
+            ApplyCommonMediaProperties(source, uri, actualTitle, actualSubtitle, props, thumbnail, URIs.VideoThumb);
 
             media.ApplyDisplayProperties(props);
-            return Task.FromResult(media);
+            return media;
         }
 
-        private static MediaPlaybackItem GetMediaFromUri(Uri uri, string title, string subtitle)
+        private static void ApplyCommonMediaProperties(
+            MediaSource source,
+            Uri uri,
+            string title,
+            string artists,
+            MediaItemDisplayProperties props,
+            string thumbnail,
+            string fallbackThumb)
         {
-            var source = MediaSource.CreateFromUri(uri);
-
             source.CustomProperties["Title"] = title;
-            source.CustomProperties["Artists"] = subtitle;
-            source.CustomProperties["Length"] = source.Duration;
+            source.CustomProperties["Artists"] = artists;
+            source.CustomProperties["Length"] = source.Duration ?? TimeSpan.Zero;
+            source.CustomProperties["Location"] = uri.ToString();
             source.CustomProperties["Year"] = 0u;
 
-            var media = new MediaPlaybackItem(source);
-            return media;
+            string thumbStr = thumbnail.ReplaceIfNullOrWhiteSpace(fallbackThumb);
+            if (!Uri.TryCreate(thumbStr, UriKind.Absolute, out Uri thumbUri))
+                thumbUri = new Uri(fallbackThumb);
+
+            props.Thumbnail ??= RandomAccessStreamReference.CreateFromUri(thumbUri);
         }
     }
 }

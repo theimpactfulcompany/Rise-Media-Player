@@ -1,4 +1,4 @@
-﻿using Rise.Common.Extensions.Markup;
+using Rise.Common.Extensions.Markup;
 using Rise.Models;
 using System;
 using System.Collections.Generic;
@@ -76,22 +76,31 @@ namespace Rise.App.Settings
 
         private async void Button_Click(object sender, RoutedEventArgs e)
         {
-            var item = WallsView.SelectedItem as Wallpaper;
-            var picFile = await StorageFile.
-                GetFileFromApplicationUriAsync(new(item.Source));
+            if (WallsView.SelectedItem is not Wallpaper item)
+                return;
 
-            var savePicker = new FileSavePicker
+            try
             {
-                SuggestedStartLocation = PickerLocationId.PicturesLibrary,
-                SuggestedFileName = item.Name
-            };
+                var picFile = await StorageFile.
+                    GetFileFromApplicationUriAsync(new(item.Source));
 
-            string fileFormat = ResourceHelper.GetString("Image");
-            savePicker.FileTypeChoices[fileFormat] = new List<string>() { ".png" };
+                var savePicker = new FileSavePicker
+                {
+                    SuggestedStartLocation = PickerLocationId.PicturesLibrary,
+                    SuggestedFileName = item.Name
+                };
 
-            var file = await savePicker.PickSaveFileAsync();
-            if (file != null)
-                await picFile.CopyAndReplaceAsync(file);
+                string fileFormat = ResourceHelper.GetString("Image");
+                savePicker.FileTypeChoices[fileFormat] = new List<string>() { ".png" };
+
+                var file = await savePicker.PickSaveFileAsync();
+                if (file != null)
+                    await picFile.CopyAndReplaceAsync(file);
+            }
+            catch (Exception ex)
+            {
+                Rise.Common.Extensions.DiagnosticsExtensions.WriteToOutput(ex);
+            }
         }
     }
 }

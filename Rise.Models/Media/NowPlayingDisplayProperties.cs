@@ -1,4 +1,4 @@
-﻿using Windows.Media;
+using Windows.Media;
 using Windows.Media.Playback;
 using Windows.Storage.Streams;
 
@@ -19,15 +19,18 @@ namespace Rise.Models
     {
         public static NowPlayingDisplayProperties GetFromPlaybackItem(MediaPlaybackItem item)
         {
-            var customProps = item.Source.CustomProperties;
+            if (item == null)
+                return null;
+
+            var customProps = item.Source?.CustomProperties;
 
             uint year = 0;
-            if (customProps.TryGetValue("Year", out var yearProp))
-                year = (uint)yearProp;
+            if (customProps != null && customProps.TryGetValue("Year", out var yearProp) && yearProp is uint parsedYear)
+                year = parsedYear;
 
             string location = string.Empty;
-            if (customProps.TryGetValue("Location", out var locationProp))
-                location = (string)locationProp;
+            if (customProps != null && customProps.TryGetValue("Location", out var locationProp) && locationProp is string parsedLocation)
+                location = parsedLocation;
 
             var displayProps = item.GetDisplayProperties();
             if (displayProps.Type == MediaPlaybackType.Music)
@@ -44,7 +47,7 @@ namespace Rise.Models
             }
 
             var videoProps = displayProps.VideoProperties;
-            return new NowPlayingDisplayProperties(MediaPlaybackType.Video,
+            return new NowPlayingDisplayProperties(displayProps.Type,
                 videoProps.Title,
                 videoProps.Subtitle,
                 string.Empty,

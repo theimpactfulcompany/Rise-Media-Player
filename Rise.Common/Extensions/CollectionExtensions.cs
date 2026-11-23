@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 
@@ -11,8 +11,14 @@ namespace Rise.Common.Extensions
         /// </summary>
         public static void Move<T>(this IList<T> list, T item, int index)
         {
-            _ = list.Remove(item);
-            list.Insert(index, item);
+            if (list == null)
+                throw new ArgumentNullException(nameof(list));
+
+            int oldIndex = list.IndexOf(item);
+            if (oldIndex < 0)
+                return;
+
+            list.Move(oldIndex, index);
         }
 
         /// <summary>
@@ -20,23 +26,13 @@ namespace Rise.Common.Extensions
         /// </summary>
         public static void Move<T>(this IList<T> list, int oldIndex, int newIndex)
         {
+            if (list == null)
+                throw new ArgumentNullException(nameof(list));
+
             T item = list[oldIndex];
 
             list.RemoveAt(oldIndex);
             list.Insert(newIndex, item);
-        }
-
-        /// <summary>
-        /// Moves a set of items to the end of the list.
-        /// </summary>
-        /// <param name="items">Items to move.</param>
-        public static void MoveItemsToEnd<T>(this IList<T> list, T[] items)
-        {
-            foreach (var item in items)
-            {
-                int moveFrom = list.IndexOf(item);
-                list.Move(moveFrom, list.Count - 1);
-            }
         }
 
         /// <summary>
@@ -46,27 +42,19 @@ namespace Rise.Common.Extensions
         public static void MoveRangeToEnd<T>(this IList<T> list,
             int startIndex, int endIndex)
         {
-            if (startIndex < 0)
+            if (list == null)
+                throw new ArgumentNullException(nameof(list));
+
+            if (startIndex < 0 || startIndex >= list.Count)
                 throw new ArgumentOutOfRangeException(nameof(startIndex));
 
-            if (endIndex > list.Count - 1)
+            if (endIndex < startIndex || endIndex >= list.Count)
                 throw new ArgumentOutOfRangeException(nameof(endIndex));
 
             for (int i = startIndex; i <= endIndex; i++)
             {
                 list.Move(startIndex, list.Count - 1);
             }
-        }
-
-        public static bool MoveItemInCollection<T>(this Collection<T> collection, T item, int newIndex)
-        {
-            if (collection?.Remove(item) ?? false)
-            {
-                collection.Insert(newIndex, item);
-                return true;
-            }
-
-            return false;
         }
 
         public static bool AddIfNotExists<T>(this IList<T> list, T item)

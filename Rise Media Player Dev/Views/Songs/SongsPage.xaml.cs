@@ -1,6 +1,7 @@
-﻿using Rise.App.Dialogs;
+using Rise.App.Dialogs;
 using Rise.App.UserControls;
 using Rise.App.ViewModels;
+using Rise.Common.Extensions;
 using Rise.Common.Extensions.Markup;
 using Rise.Common.Helpers;
 using Rise.Data.Collections;
@@ -53,60 +54,54 @@ namespace Rise.App.Views
     public sealed partial class SongsPage
     {
         private void MainList_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
-        {
-            if ((e.OriginalSource as FrameworkElement).DataContext is SongViewModel song)
-                MediaViewModel.PlayFromItemCommand.Execute(song);
-        }
+            => HandleDoubleTappedPlay<SongViewModel>(e);
 
         private void MenuFlyout_Opening(object sender, object e)
-        {
-            var fl = sender as MenuFlyout;
-            var cont = MainList.ItemFromContainer(fl.Target);
-
-            if (cont == null)
-                fl.Hide();
-            else
-                SelectedItem = (SongViewModel)cont;
-        }
+            => HandleMenuFlyoutOpening<SongViewModel>(sender, MainList, item => SelectedItem = item);
 
         private void AskDiscy_Click(object sender, RoutedEventArgs e)
-        {
-            DiscyOnSong.IsOpen = true;
-        }
+            => DiscyOnSong.IsOpen = true;
 
         private async void PlayFromUrl_Click(object sender, RoutedEventArgs e)
         {
-            _ = await new MusicStreamingDialog().ShowAsync();
+            try
+            {
+                _ = await new MusicStreamingDialog().ShowAsync();
+            }
+            catch (Exception ex)
+            {
+                ex.WriteToOutput();
+            }
         }
 
         private async void AddFolders_Click(object sender, RoutedEventArgs e)
-        {
-            ContentDialog dialog = new()
-            {
-                Title = ResourceHelper.GetString("/Settings/MediaLibraryManageFoldersTitle"),
-                CloseButtonText = ResourceHelper.GetString("Close"),
-                Content = new Settings.MediaSourcesPage()
-            };
-            _ = await dialog.ShowAsync();
-        }
+            => await ShowManageFoldersDialogAsync();
 
         private async void Remove_Click(object sender, RoutedEventArgs e)
         {
             var svm = SelectedItem;
-            ContentDialog dialog = new()
-            {
-                Title = ResourceHelper.GetString("DeleteSong"),
-                Content = string.Format(ResourceHelper.GetString("ConfirmRemovalSong"), svm.Title),
-                PrimaryButtonStyle = Resources["AccentButtonStyle"] as Style,
-                PrimaryButtonText = ResourceHelper.GetString("DeleteAnyway"),
-                SecondaryButtonText = ResourceHelper.GetString("Close")
-            };
+            if (svm == null)
+                return;
 
-            var result = await dialog.ShowAsync();
-            if (result == ContentDialogResult.Primary)
-                await MViewModel.RemoveSongAsync(svm, false);
-            else
-                dialog.Hide();
+            try
+            {
+                ContentDialog dialog = new()
+                {
+                    Title = ResourceHelper.GetString("DeleteSong"),
+                    Content = string.Format(ResourceHelper.GetString("ConfirmRemovalSong"), svm.Title),
+                    PrimaryButtonStyle = Resources["AccentButtonStyle"] as Style,
+                    PrimaryButtonText = ResourceHelper.GetString("DeleteAnyway"),
+                    SecondaryButtonText = ResourceHelper.GetString("Close")
+                };
+
+                var result = await dialog.ShowAsync();
+                if (result == ContentDialogResult.Primary)
+                    await MViewModel.RemoveSongAsync(svm, false);
+            }
+            catch (Exception ex)
+            {
+                ex.WriteToOutput();
+            }
         }
     }
 }

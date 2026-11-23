@@ -2,7 +2,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
-using System.Text.Json.Serialization;
 
 namespace Rise.Data.Navigation
 {
@@ -80,8 +79,15 @@ namespace Rise.Data.Navigation
 
         public int IndexOf(NavigationItemBase item)
         {
+            if (item == null)
+                return -1;
+
             if (item.IsFooter)
-                return _footerItems.IndexOf(item) + _menuItems.Count;
+            {
+                int footerIndex = _footerItems.IndexOf(item);
+                return footerIndex >= 0 ? footerIndex + _menuItems.Count : -1;
+            }
+
             return _menuItems.IndexOf(item);
         }
 
@@ -141,10 +147,5 @@ namespace Rise.Data.Navigation
 
         IEnumerator IEnumerable.GetEnumerator()
             => _menuItems.Concat(_footerItems).GetEnumerator();
-    }
-
-    [JsonSerializable(typeof(IEnumerable<NavigationItemBase>))]
-    internal sealed partial class NavigationItemCollectionContext : JsonSerializerContext
-    {
     }
 }

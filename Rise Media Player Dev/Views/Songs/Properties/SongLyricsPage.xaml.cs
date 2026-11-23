@@ -1,5 +1,7 @@
-﻿using Rise.App.ViewModels;
+using Rise.App.ViewModels;
+using Rise.Common.Extensions;
 using Rise.Common.Extensions.Markup;
+using System;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Navigation;
@@ -13,7 +15,6 @@ namespace Rise.App.Views
         public SongLyricsPage()
         {
             InitializeComponent();
-
             Loaded += OnLoaded;
         }
 
@@ -27,14 +28,25 @@ namespace Rise.App.Views
 
         private async void OnLoaded(object sender, RoutedEventArgs e)
         {
-            string lyrics = await Props.Model.GetLyricsAsync();
-            if (!string.IsNullOrWhiteSpace(lyrics))
-                Lyrics.Text = lyrics;
-            else
-                Lyrics.Text = ResourceHelper.GetString("NoLyricsFound");
+            Loaded -= OnLoaded;
 
-            LoadingRing.IsActive = false;
-            LoadingRing.Visibility = Visibility.Collapsed;
+            try
+            {
+                string lyrics = Props?.Model != null ? await Props.Model.GetLyricsAsync() : string.Empty;
+                Lyrics.Text = !string.IsNullOrWhiteSpace(lyrics)
+                    ? lyrics
+                    : ResourceHelper.GetString("NoLyricsFound");
+            }
+            catch (Exception ex)
+            {
+                ex.WriteToOutput();
+                Lyrics.Text = ResourceHelper.GetString("NoLyricsFound");
+            }
+            finally
+            {
+                LoadingRing.IsActive = false;
+                LoadingRing.Visibility = Visibility.Collapsed;
+            }
         }
     }
 }

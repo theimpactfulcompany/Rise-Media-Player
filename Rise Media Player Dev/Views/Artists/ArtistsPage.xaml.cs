@@ -1,17 +1,12 @@
-﻿using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Input;
 using Rise.App.UserControls;
 using Rise.App.ViewModels;
 using Rise.Common.Constants;
-using Rise.Common.Extensions;
-using Rise.Common.Extensions.Markup;
 using Rise.Common.Helpers;
 using Rise.Data.Collections;
 using Rise.Data.Json;
-using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Windows.Storage;
-using Windows.Storage.Pickers;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 
@@ -45,6 +40,9 @@ namespace Rise.App.Views
         [RelayCommand]
         private Task AddToPlaylistAsync(PlaylistViewModel playlist)
         {
+            if (SelectedItem == null)
+                return Task.CompletedTask;
+
             var name = SelectedItem.Name;
             var items = new List<SongViewModel>();
 
@@ -70,74 +68,31 @@ namespace Rise.App.Views
         private void MainGrid_ItemClick(object sender, ItemClickEventArgs e)
         {
             if (e.ClickedItem is ArtistViewModel artist && !KeyboardHelpers.IsCtrlPressed())
-            {
                 _ = Frame.Navigate(typeof(ArtistSongsPage), artist.Model.Id);
-            }
         }
 
         private void MenuFlyout_Opening(object sender, object e)
-        {
-            var fl = sender as MenuFlyout;
-            var cont = MainGrid.ItemFromContainer(fl.Target);
-
-            if (cont == null)
-                fl.Hide();
-            else
-                SelectedItem = (ArtistViewModel)cont;
-        }
+            => HandleMenuFlyoutOpening<ArtistViewModel>(sender, MainGrid, item => SelectedItem = item);
 
         private void AskDiscy_Click(object sender, RoutedEventArgs e)
-        {
-            DiscyOnArtist.IsOpen = true;
-        }
+            => DiscyOnArtist.IsOpen = true;
 
         private async void ChngArtImg_Click(object sender, RoutedEventArgs e)
         {
-            var picker = new FileOpenPicker
+            var artist = SelectedItem;
+            if (artist == null)
+                return;
+
+            string copiedUri = await PickAndCopyImageAsync($"artist-{artist.Model.Id}");
+            if (copiedUri != null)
             {
-                ViewMode = PickerViewMode.Thumbnail,
-                SuggestedStartLocation = PickerLocationId.PicturesLibrary
-            };
-
-            picker.FileTypeFilter.Add(".jpg");
-            picker.FileTypeFilter.Add(".jpeg");
-            picker.FileTypeFilter.Add(".png");
-
-            var file = await picker.PickSingleFileAsync();
-            if (file != null)
-            {
-                // If this throws, there's no image to work with
-                try
-                {
-                    var img = await file.GetBitmapAsync();
-                    if (img == null)
-                        return;
-
-                    img.Dispose();
-                }
-                catch { return; }
-
-                var artist = SelectedItem;
                 artist.Picture = URIs.ArtistThumb;
-
-                string filename = $@"artist-{artist.Model.Id}{file.FileType}";
-                _ = await file.CopyAsync(ApplicationData.Current.LocalFolder,
-                    filename, NameCollisionOption.ReplaceExisting);
-
-                artist.Picture = $@"ms-appdata:///local/{filename}";
-                await artist.SaveAsync();
+                artist.Picture = copiedUri;
+                await App.MViewModel.UpsertAsync(artist);
             }
         }
 
         private async void AddFolders_Click(object sender, RoutedEventArgs e)
-        {
-            ContentDialog dialog = new()
-            {
-                Title = ResourceHelper.GetString("/Settings/MediaLibraryManageFoldersTitle"),
-                CloseButtonText = ResourceHelper.GetString("Close"),
-                Content = new Settings.MediaSourcesPage()
-            };
-            _ = await dialog.ShowAsync();
-        }
+            => await ShowManageFoldersDialogAsync();
     }
 }

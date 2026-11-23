@@ -1,4 +1,4 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 
 namespace Rise.Effects
 {
@@ -46,7 +46,7 @@ namespace Rise.Effects
                     1 => "75",
                     2 => "150",
                     3 => "300",
-                    4 => "300",
+                    4 => "600",
                     5 => "1.2k",
                     6 => "2.5k",
                     7 => "5k",

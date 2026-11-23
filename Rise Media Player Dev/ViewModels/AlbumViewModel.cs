@@ -1,22 +1,22 @@
-﻿using Rise.Common.Extensions.Markup;
+using Rise.Common.Extensions.Markup;
 using Rise.Data.ViewModels;
 using Rise.Models;
 using System;
-using System.Linq;
-using System.Threading.Tasks;
 
 namespace Rise.App.ViewModels
 {
     public sealed class AlbumViewModel : ViewModel<Album>
     {
+        private readonly Func<string, int> _trackCounter;
 
         #region Constructor
         /// <summary>
         /// Initializes a new instance of the AlbumViewModel class that wraps an Album object.
         /// </summary>
-        public AlbumViewModel(Album model = null)
+        public AlbumViewModel(Album model = null, Func<string, int> trackCounter = null)
         {
             Model = model ?? new Album();
+            _trackCounter = trackCounter;
         }
         #endregion
 
@@ -38,6 +38,7 @@ namespace Rise.App.ViewModels
                 {
                     Model.Title = value;
                     OnPropertyChanged();
+                    OnPropertyChanged(nameof(TitleWithArtist));
                 }
             }
         }
@@ -59,6 +60,7 @@ namespace Rise.App.ViewModels
                 {
                     Model.Artist = value;
                     OnPropertyChanged();
+                    OnPropertyChanged(nameof(TitleWithArtist));
                 }
             }
         }
@@ -134,41 +136,9 @@ namespace Rise.App.ViewModels
         }
 
         public int TrackCount
-            => App.MViewModel.Songs.Count(s => s.Album == Model.Title);
+            => _trackCounter?.Invoke(Model.Title) ?? 0;
         public string LocalizedTrackCount
             => ResourceHelper.GetLocalizedCount("Song", TrackCount);
-        #endregion
-
-        #region Backend
-        /// <summary>
-        /// Saves item data to the backend.
-        /// </summary>
-        public async Task SaveAsync(bool queue = false)
-        {
-            if (!App.MViewModel.Albums.Contains(this))
-            {
-                App.MViewModel.Albums.Add(this);
-            }
-
-            if (queue)
-            {
-                NewRepository.Repository.QueueUpsert(Model);
-            }
-            else
-            {
-                await NewRepository.Repository.UpsertAsync(Model);
-            }
-        }
-        #endregion
-
-        #region Editing
-        /// <summary>
-        /// Discards any edits that have been made, restoring the original values.
-        /// </summary>
-        public async Task CancelEditsAsync()
-        {
-            Model = await NewRepository.Repository.GetItemAsync<Album>(Model.Id);
-        }
         #endregion
     }
 }

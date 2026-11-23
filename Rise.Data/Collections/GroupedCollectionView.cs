@@ -1,4 +1,4 @@
-﻿using Rise.Common.Helpers;
+using Rise.Common.Helpers;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -212,12 +212,15 @@ public sealed partial class GroupedCollectionView : ICollectionView, ISupportInc
         var current = CurrentItem;
         _view.Clear();
 
-        foreach (var item in _source)
+        if (_source != null)
         {
-            if (_filter != null && !_filter(item))
-                continue;
+            foreach (var item in _source)
+            {
+                if (_filter != null && !_filter(item))
+                    continue;
 
-            _view.Add(item);
+                _view.Add(item);
+            }
         }
 
         OnSortDescriptionsChanged(current);
@@ -252,13 +255,16 @@ public sealed partial class GroupedCollectionView : ICollectionView, ISupportInc
         {
             for (int index = 0; index < _view.Count; index++)
             {
-                var item = _view.ElementAt(index);
+                var item = _view[index];
                 if (_filter(item)) continue;
 
                 RemoveFromView(index);
                 index--;
             }
         }
+
+        if (_source == null)
+            return;
 
         var viewHash = new HashSet<object>(_view);
 

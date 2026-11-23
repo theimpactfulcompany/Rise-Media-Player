@@ -1,7 +1,9 @@
-﻿using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Input;
+using Newtonsoft.Json;
 using Rise.Common.Extensions;
+using System;
+using System.Collections.Generic;
 using System.Linq;
-using System.Text.Json;
 using Windows.Foundation;
 using Windows.Storage;
 
@@ -14,6 +16,10 @@ namespace Rise.Data.Navigation
     public sealed partial class NavigationDataSource
     {
         private const string _fileName = "NavigationItemData.json";
+        private static readonly JsonSerializerSettings SerializerSettings = new()
+        {
+            Converters = { new NavigationItemJsonConverter() }
+        };
 
         /// <summary>
         /// Contains all the items in the data source.
@@ -43,15 +49,15 @@ namespace Rise.Data.Navigation
             {
                 AllItems = new(_defaultItems);
                 SerializeGroupsAsync().Get();
+                _populated = true;
                 return;
             }
 
-            var saved = JsonSerializer.Deserialize(jsonText,
-                NavigationItemCollectionContext.Default.IEnumerableNavigationItemBase);
-            var items = saved.ToList();
+            var saved = JsonConvert.DeserializeObject<List<NavigationItemBase>>(jsonText, SerializerSettings);
+            var items = saved ?? new();
 
             // Remove items that shouldn't be there
-            items.RemoveAll(i => !_defaultItems.Contains(i));
+            _ = items.RemoveAll(i => !_defaultItems.Contains(i));
 
             // Add new items
             for (int i = 0; i < _defaultItems.Length; i++)
@@ -61,29 +67,23 @@ namespace Rise.Data.Navigation
                 {
                     bool isHeader = item.ItemType == NavigationItemType.Header;
 
-                    int index;
-                    if (isHeader)
-                        index = items.FindIndex(i => i.Group == item.Group && i.IsFooter == item.IsFooter);
-                    else
-                        index = items.FindLastIndex(i => i.Group == item.Group && i.IsFooter == item.IsFooter);
+                    int index = isHeader
+                        ? items.FindIndex(existing => existing.Group == item.Group && existing.IsFooter == item.IsFooter)
+                        : items.FindLastIndex(existing => existing.Group == item.Group && existing.IsFooter == item.IsFooter);
 
                     // If there's no group yet, add the item at
-                    // the end of the previous group
+                    // the end of the previous group (clamped to current list length)
                     if (index == -1)
                     {
-                        items.Insert(i, item);
+                        items.Insert(Math.Min(i, items.Count), item);
                         continue;
                     }
 
-                    if (isHeader)
-                        items.Insert(index, item);
-                    else
-                        items.Insert(index + 1, item);
+                    items.Insert(isHeader ? index : index + 1, item);
                 }
             }
 
             AllItems = new(items);
-
             _populated = true;
         }
 
@@ -92,8 +92,7 @@ namespace Rise.Data.Navigation
         /// </summary>
         public IAsyncAction SerializeGroupsAsync()
         {
-            string text = JsonSerializer.Serialize(AllItems,
-                NavigationItemCollectionContext.Default.IEnumerableNavigationItemBase);
+            string text = JsonConvert.SerializeObject(AllItems.ToList(), SerializerSettings);
 
             return PathIO.WriteTextAsync($"ms-appdata:///local/{_fileName}", text);
         }
@@ -108,7 +107,10 @@ namespace Rise.Data.Navigation
         /// </summary>
         [RelayCommand]
         public void ToggleItemVisibility(NavigationItemBase item)
-            => ChangeItemVisibility(item, !item.IsVisible);
+        {
+            if (item != null)
+                ChangeItemVisibility(item, !item.IsVisible);
+        }
 
         /// <summary>
         /// Changes the visibility of the provided item and updates the
@@ -117,6 +119,9 @@ namespace Rise.Data.Navigation
         /// <param name="vis">Whether the item should be visible.</param>
         public void ChangeItemVisibility(NavigationItemBase item, bool vis)
         {
+            if (item == null)
+                return;
+
             item.IsVisible = vis;
             if (GetItem(item.Group) is NavigationItemHeader header)
             {
@@ -144,7 +149,6 @@ namespace Rise.Data.Navigation
             }
 
             header.IsGroupVisible = false;
-            header.IsVisible = false;
         }
 
         /// <summary>
@@ -184,7 +188,6 @@ namespace Rise.Data.Navigation
             }
 
             SerializeGroupsAsync().Get();
-            return;
         }
 
         /// <summary>
@@ -215,15 +218,16 @@ namespace Rise.Data.Navigation
         /// <returns>true if the item can be moved up, false otherwise.</returns>
         public bool CanMoveUp(NavigationItemBase item)
         {
-            int index = AllItems.IndexOf(item);
-            if (index == 0)
+            if (item == null)
                 return false;
 
-            var elm = AllItems.ElementAt(index - 1);
-            bool sameGroup = elm.Group == item.Group;
-            bool directlyBelowHeader = sameGroup && elm.ItemType == NavigationItemType.Header;
+            var view = AllItems.GetView(item.IsFooter);
+            int index = view.IndexOf(item);
+            if (index <= 0)
+                return false;
 
-            return sameGroup && !directlyBelowHeader;
+            var prev = view[index - 1];
+            return prev.Group == item.Group && prev.ItemType != NavigationItemType.Header;
         }
 
         /// <summary>
@@ -233,12 +237,15 @@ namespace Rise.Data.Navigation
         /// <returns>true if the item can be moved down, false otherwise.</returns>
         public bool CanMoveDown(NavigationItemBase item)
         {
-            int index = AllItems.IndexOf(item) + 1;
-            if (index == AllItems.Count)
+            if (item == null)
                 return false;
 
-            var elm = AllItems.ElementAt(index);
-            return elm.Group == item.Group;
+            var view = AllItems.GetView(item.IsFooter);
+            int nextIndex = view.IndexOf(item) + 1;
+            if (nextIndex <= 0 || nextIndex >= view.Count)
+                return false;
+
+            return view[nextIndex].Group == item.Group;
         }
 
         /// <summary>
@@ -261,13 +268,15 @@ namespace Rise.Data.Navigation
         [RelayCommand]
         public void MoveToTop(NavigationItemBase item)
         {
+            if (item == null)
+                return;
+
             var header = GetItem(item.Group);
-            var items = AllItems.GetView(item.IsFooter);
+            int targetIndex = header != null
+                ? AllItems.IndexOf(header) + 1
+                : (item.IsFooter ? AllItems.MenuItems.Count : 0);
 
-            // If the header is null, the index will be -1, but thanks to the
-            // addition, the item will get inserted at the beginning
-            AllItems.Move(item, items.IndexOf(header) + 1);
-
+            AllItems.Move(item, targetIndex);
             SerializeGroupsAsync().Get();
         }
 
@@ -277,16 +286,28 @@ namespace Rise.Data.Navigation
         [RelayCommand]
         public void MoveToBottom(NavigationItemBase item)
         {
-            var items = AllItems.GetView(item.IsFooter);
-            var lastInGroup = items.LastOrDefault(i => i.Group == item.Group);
+            if (item == null)
+                return;
 
-            AllItems.Move(item, items.IndexOf(lastInGroup));
+            var view = AllItems.GetView(item.IsFooter);
+            var lastInGroup = view.LastOrDefault(i => i.Group == item.Group);
+            if (lastInGroup == null)
+                return;
 
-            SerializeGroupsAsync().Get();
+            int targetIndex = AllItems.IndexOf(lastInGroup);
+            if (targetIndex >= 0)
+            {
+                AllItems.Move(item, targetIndex);
+                SerializeGroupsAsync().Get();
+            }
         }
 
         private void MoveItem(NavigationItemBase item, int offset)
         {
+            bool canMove = offset < 0 ? CanMoveUp(item) : offset > 0 && CanMoveDown(item);
+            if (!canMove)
+                return;
+
             int index = AllItems.IndexOf(item);
             AllItems.Move(index, index + offset);
 
@@ -302,6 +323,6 @@ namespace Rise.Data.Navigation
         /// </summary>
         /// <param name="id">ID of the item.</param>
         public NavigationItemBase GetItem(string id)
-            => AllItems.FirstOrDefault(i => i.Id.Equals(id));
+            => id != null ? AllItems?.FirstOrDefault(i => string.Equals(i.Id, id, StringComparison.Ordinal)) : null;
     }
 }

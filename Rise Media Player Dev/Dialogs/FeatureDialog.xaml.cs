@@ -1,4 +1,4 @@
-﻿using Rise.Common.Enums;
+using Rise.Common.Enums;
 using Rise.Common.Extensions;
 using System;
 using System.Collections.ObjectModel;
@@ -19,22 +19,8 @@ namespace Rise.App.Dialogs
             set
             {
                 _index = value;
-                if (_index == 0)
-                {
-                    Left.IsEnabled = false;
-                }
-                else
-                {
-                    Left.IsEnabled = true;
-                    if (_index == _features.Count - 1)
-                    {
-                        Right.IsEnabled = false;
-                    }
-                    else
-                    {
-                        Right.IsEnabled = true;
-                    }
-                }
+                Left.IsEnabled = _index > 0;
+                Right.IsEnabled = _index < _features.Count - 1;
 
                 RefreshData();
             }

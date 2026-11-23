@@ -1,7 +1,6 @@
-﻿using Rise.Common.Extensions.Markup;
+using Rise.Common.Extensions.Markup;
 using Rise.Data.ViewModels;
 using Rise.Models;
-using System.Threading.Tasks;
 
 namespace Rise.App.ViewModels
 {
@@ -10,7 +9,7 @@ namespace Rise.App.ViewModels
 
         #region Constructor
         /// <summary>
-        /// Initializes a new instance of the AlbumViewModel class that wraps an Album object.
+        /// Initializes a new instance of the GenreViewModel class that wraps a Genre object.
         /// </summary>
         public GenreViewModel(Genre model = null)
         {
@@ -37,28 +36,6 @@ namespace Rise.App.ViewModels
                     Model.Name = value;
                     OnPropertyChanged();
                 }
-            }
-        }
-        #endregion
-
-        #region Backend
-        /// <summary>
-        /// Saves item data to the backend.
-        /// </summary>
-        public async Task SaveAsync(bool queue = false)
-        {
-            if (!App.MViewModel.Genres.Contains(this))
-            {
-                App.MViewModel.Genres.Add(this);
-            }
-
-            if (queue)
-            {
-                NewRepository.Repository.QueueUpsert(Model);
-            }
-            else
-            {
-                await NewRepository.Repository.UpsertAsync(Model);
             }
         }
         #endregion

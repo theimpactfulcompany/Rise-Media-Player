@@ -1,4 +1,5 @@
-﻿using Rise.App.ViewModels;
+using Rise.App.UserControls;
+using Rise.App.ViewModels;
 using Rise.Common.Constants;
 using Rise.Common.Extensions;
 using System;
@@ -28,54 +29,41 @@ namespace Rise.App.Views
 
         private async void exportPlaylistArt_Click(object sender, RoutedEventArgs e)
         {
-            var picFile = await StorageFile.
-                GetFileFromApplicationUriAsync(new Uri(Playlist.Icon));
+            if (Playlist == null || string.IsNullOrEmpty(Playlist.Icon))
+                return;
 
-            FileSavePicker filePicker = new()
+            try
             {
-                SuggestedStartLocation = PickerLocationId.PicturesLibrary,
-            };
+                var picFile = await StorageFile.
+                    GetFileFromApplicationUriAsync(new Uri(Playlist.Icon));
 
-            filePicker.FileTypeChoices.Add("Portable Network Graphics", new List<string>() { ".png" });
+                FileSavePicker filePicker = new()
+                {
+                    SuggestedStartLocation = PickerLocationId.PicturesLibrary,
+                };
 
-            var file = await filePicker.PickSaveFileAsync();
-            if (file != null)
-                await picFile.CopyAndReplaceAsync(file);
+                filePicker.FileTypeChoices.Add("Portable Network Graphics", new List<string>() { ".png" });
+
+                var file = await filePicker.PickSaveFileAsync();
+                if (file != null)
+                    await picFile.CopyAndReplaceAsync(file);
+            }
+            catch (Exception ex)
+            {
+                ex.WriteToOutput();
+            }
         }
 
         private async void EditPlaylistIcon_Click(Microsoft.UI.Xaml.Controls.SplitButton sender, Microsoft.UI.Xaml.Controls.SplitButtonClickEventArgs args)
         {
-            var picker = new FileOpenPicker
+            if (Playlist == null)
+                return;
+
+            string copiedUri = await MediaPageBase.PickAndCopyImageAsync($"playlist-{Playlist.Id}");
+            if (copiedUri != null)
             {
-                ViewMode = PickerViewMode.Thumbnail,
-                SuggestedStartLocation = PickerLocationId.PicturesLibrary
-            };
-
-            picker.FileTypeFilter.Add(".jpg");
-            picker.FileTypeFilter.Add(".jpeg");
-            picker.FileTypeFilter.Add(".png");
-
-            var file = await picker.PickSingleFileAsync();
-            if (file != null)
-            {
-                // If this throws, there's no image to work with
-                try
-                {
-                    var img = await file.GetBitmapAsync();
-                    if (img == null)
-                        return;
-
-                    img.Dispose();
-                }
-                catch { return; }
-
                 Playlist.Icon = URIs.PlaylistThumb;
-
-                string filename = $@"artist-{Playlist.Id}{file.FileType}";
-                _ = await file.CopyAsync(ApplicationData.Current.LocalFolder,
-                    filename, NameCollisionOption.ReplaceExisting);
-
-                Playlist.Icon = $@"ms-appdata:///local/{filename}";
+                Playlist.Icon = copiedUri;
             }
         }
     }

@@ -1,4 +1,4 @@
-﻿using Rise.Common.Extensions;
+using Rise.Common.Extensions;
 using System;
 using Windows.Storage.Streams;
 using Windows.UI.Xaml;
@@ -14,22 +14,34 @@ namespace Rise.App.Converters
     {
         public object Convert(object value, Type targetType, object parameter, string language)
         {
+            if (value == null)
+                return null;
+
             IRandomAccessStream strm;
             if (value is IRandomAccessStream rand)
                 strm = rand.CloneStream();
             else if (value is IRandomAccessStreamReference randRef)
                 strm = randRef.OpenReadAsync().Get();
             else
-                throw new ArgumentException($"The provided value must be of type {typeof(IRandomAccessStream)}.", nameof(value));
+                return null;
 
             var img = new BitmapImage();
-            void OnImageOpened(object sender, RoutedEventArgs e)
+            void Cleanup(object sender, RoutedEventArgs e)
             {
+                img.ImageOpened -= Cleanup;
+                img.ImageFailed -= CleanupFailed;
                 strm.Dispose();
-                img.ImageOpened -= OnImageOpened;
             }
 
-            img.ImageOpened += OnImageOpened;
+            void CleanupFailed(object sender, ExceptionRoutedEventArgs e)
+            {
+                img.ImageOpened -= Cleanup;
+                img.ImageFailed -= CleanupFailed;
+                strm.Dispose();
+            }
+
+            img.ImageOpened += Cleanup;
+            img.ImageFailed += CleanupFailed;
 
             _ = img.SetSourceAsync(strm);
             return img;

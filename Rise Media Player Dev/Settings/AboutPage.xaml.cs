@@ -1,4 +1,4 @@
-﻿using Rise.App.Dialogs;
+using Rise.App.Dialogs;
 using Rise.Common.Constants;
 using Rise.Common.Extensions;
 using Rise.Common.Extensions.Markup;
@@ -32,8 +32,6 @@ namespace Rise.App.Settings
             {
                 case "Insider":
                     _ = Frame.Navigate(typeof(InsiderPage));
-                    AllSettingsPage.Current.MainSettingsHeaderIcon.Glyph = "\uF1AD";
-                    AllSettingsPage.Current.MainSettingsHeader.Text = ResourceHelper.GetString("InsiderHub");
                     break;
 
                 case "Version":

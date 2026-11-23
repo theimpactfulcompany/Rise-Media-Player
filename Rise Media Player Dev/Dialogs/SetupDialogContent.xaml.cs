@@ -1,4 +1,4 @@
-﻿using Rise.App.Setup;
+using Rise.App.Setup;
 using Rise.App.ViewModels;
 using Rise.App.Views;
 using Rise.Common.Extensions.Markup;
@@ -55,8 +55,9 @@ namespace Rise.App.Dialogs
             if (progress == 0)
             {
                 HideDialog();
+                return;
             }
-            if (progress == 1)
+            else if (progress == 1)
             {
                 ViewModel.FetchOnlineData = false;
             }

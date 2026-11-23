@@ -39,9 +39,13 @@ namespace Rise.App
         private static Timer IndexingTimer;
 
         // No lazy init (used very early on, so lazy init is not needed)
-        public static MainViewModel MViewModel { get; } = new();
         public static SettingsViewModel SViewModel { get; } = new();
         public static NavigationDataSource NavDataSource { get; } = new();
+        public static MainViewModel MViewModel { get; } = new(
+            Repository.Default,
+            () => MusicLibrary,
+            () => VideoLibrary,
+            () => SViewModel.FetchOnlineData);
 
         // Lazy init
         private readonly static Lazy<MediaPlaybackViewModel> _mpViewModel
@@ -245,6 +249,12 @@ namespace Rise.App
         private static MediaPlaybackViewModel OnMPViewModelRequested()
         {
             var mpvm = new MediaPlaybackViewModel();
+            mpvm.MediaPlayerRecreated += (_, player) => player.Volume = SViewModel.Volume;
+            SViewModel.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(SettingsViewModel.Volume) && mpvm.PlayerCreated)
+                    mpvm.Player.Volume = SViewModel.Volume;
+            };
 
             if (!EqualizerEffect.Initialized)
             {
@@ -321,13 +331,21 @@ namespace Rise.App
         // Indexing timer
         public static void RestartIndexingTimer()
         {
-            if (IndexingTimer != null && IndexingTimer.Enabled)
+            if (IndexingTimer != null)
+            {
+                IndexingTimer.Elapsed -= IndexingTimer_Elapsed;
                 IndexingTimer.Stop();
+                IndexingTimer.Dispose();
+                IndexingTimer = null;
+            }
 
             if (!SViewModel.IndexingTimerEnabled)
                 return;
 
             var span = TimeSpan.FromMinutes(SViewModel.IndexingTimerInterval);
+            if (span <= TimeSpan.Zero)
+                return;
+
             IndexingTimer = new(span.TotalMilliseconds)
             {
                 AutoReset = true
@@ -354,6 +372,8 @@ namespace Rise.App
         /// </summary>
         private void ShowExceptionToast(Exception e)
         {
+            if (e == null)
+                return;
             string notifTitle = ResourceHelper.GetString("ErrorOcurred");
             ToastContent content = new ToastContentBuilder()
                 .AddToastActivationInfo(new QueryString()

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -24,7 +24,7 @@ namespace Rise.Common.Helpers
         /// <summary>
         /// The current CancellationToken.
         /// </summary>
-        public CancellationToken Token => _tokenSource.Token;
+        public CancellationToken Token => _tokenSource?.Token ?? CancellationToken.None;
 
         /// <summary>
         /// Cancels the pending Task and waits for it to complete. This method
@@ -37,21 +37,26 @@ namespace Rise.Common.Helpers
         /// been canceled before the Task, an exception is thrown.</exception>
         public async Task CompletePendingAsync(CancellationToken token)
         {
-            // Generate a new linked token
-            var previousCts = this._tokenSource;
             var newCts = CancellationTokenSource.CreateLinkedTokenSource(token);
-            this._tokenSource = newCts;
+            var previousCts = Interlocked.Exchange(ref _tokenSource, newCts);
+            var previousTask = _pendingTask;
 
             if (previousCts != null)
             {
-                // Cancel the previous session and wait for its termination
-                previousCts.Cancel();
-
-                if (_pendingTask != null)
-                    try { await this._pendingTask; } catch { }
+                try
+                {
+                    previousCts.Cancel();
+                    if (previousTask != null)
+                    {
+                        try { await previousTask; } catch { }
+                    }
+                }
+                finally
+                {
+                    previousCts.Dispose();
+                }
             }
 
-            // We need to check if we've been canceled
             newCts.Token.ThrowIfCancellationRequested();
         }
 
@@ -60,15 +65,9 @@ namespace Rise.Common.Helpers
         /// with any other Tasks ran through <see cref="RunAsync(Task)"/>
         /// or any of its overloads.
         /// </summary>
-        /// <param name="task">Task to run.</param>
-        /// <exception cref="OperationCanceledException">Thrown when the
-        /// operation is cancelled.</exception>
-        /// <remarks>For the helper to be effective, first call
-        /// <see cref="CompletePendingAsync(CancellationToken)"/>, and pass
-        /// <see cref="Token"/> to your task for the cancellation token.</remarks>
         public Task RunAsync(Task task)
         {
-            this._pendingTask = task;
+            _pendingTask = task;
             return task;
         }
 
@@ -77,16 +76,9 @@ namespace Rise.Common.Helpers
         /// with any other Tasks ran through <see cref="RunAsync(Task)"/>
         /// or any of its overloads.
         /// </summary>
-        /// <param name="task">Task to run.</param>
-        /// <returns>The return value of <paramref name="task"/>.</returns>
-        /// <exception cref="OperationCanceledException">Thrown when the
-        /// operation is cancelled.</exception>
-        /// <remarks>For the helper to be effective, first call
-        /// <see cref="CompletePendingAsync(CancellationToken)"/>, and pass
-        /// <see cref="Token"/> to your task for the cancellation token.</remarks>
         public Task<T> RunAsync<T>(Task<T> task)
         {
-            this._pendingTask = task;
+            _pendingTask = task;
             return task;
         }
     }

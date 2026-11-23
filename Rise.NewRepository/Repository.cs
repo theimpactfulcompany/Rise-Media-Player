@@ -1,4 +1,3 @@
-﻿using Rise.Common.Extensions;
 using Rise.Models;
 using SQLite;
 using System;
@@ -6,180 +5,161 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Windows.Storage;
 
 namespace Rise.NewRepository
 {
-    public static class Repository
+    /// <summary>
+    /// SQLite-backed implementation of <see cref="IMediaRepository"/>.
+    /// </summary>
+    public sealed class MediaRepository : IMediaRepository
     {
-        public static readonly string DbPath =
-            Path.Combine(ApplicationData.Current.LocalFolder.Path, "Lists.db");
+        private readonly SemaphoreSlim _initLock = new(1, 1);
+        private readonly ConcurrentQueue<DbObject> _upsertQueue = new();
+        private readonly ConcurrentQueue<DbObject> _removeQueue = new();
 
-        private static SQLiteConnection _db;
-        private static SQLiteAsyncConnection _asyncDb;
+        private SQLiteConnection _db;
+        private SQLiteAsyncConnection _asyncDb;
+        private volatile bool _initialized;
 
-        private static ConcurrentQueue<DbObject> _upsertQueue;
-        private static ConcurrentQueue<DbObject> _removeQueue;
+        public string DbPath { get; }
 
-        private static bool _initialized = false;
+        public MediaRepository(string dbPath = null)
+        {
+            DbPath = string.IsNullOrWhiteSpace(dbPath)
+                ? Path.Combine(ApplicationData.Current.LocalFolder.Path, "Lists.db")
+                : dbPath;
+        }
 
-        /// <summary>
-        /// Initializes the database and its tables.
-        /// </summary>
-        public static async Task InitializeDatabaseAsync()
+        public async Task InitializeAsync()
         {
             if (_initialized)
                 return;
-            _initialized = true;
 
-            _ = await ApplicationData.Current.LocalFolder.CreateFileAsync("Lists.db", CreationCollisionOption.OpenIfExists);
-
-            _db ??= new SQLiteConnection(DbPath);
-            _asyncDb ??= new SQLiteAsyncConnection(DbPath);
-
-            await _asyncDb.EnableWriteAheadLoggingAsync();
-
-            await Task.WhenAll(
-                _asyncDb.CreateTableAsync<Song>(),
-                _asyncDb.CreateTableAsync<Artist>(),
-                _asyncDb.CreateTableAsync<Album>(),
-                _asyncDb.CreateTableAsync<Genre>(),
-                _asyncDb.CreateTableAsync<Video>()
-            );
-
-            _upsertQueue ??= new();
-            _removeQueue ??= new();
-        }
-
-        /// <summary>
-        /// Gets all items from the table which contains
-        /// objects of the specified type.
-        /// </summary>
-        /// <returns>The list of items.</returns>
-        public static List<T> GetItems<T>()
-            where T : DbObject, new()
-        {
-            var table = _db.Table<T>();
-            return table.ToList();
-        }
-
-        /// <summary>
-        /// Gets all items from the table which contains
-        /// objects of the specified type.
-        /// </summary>
-        /// <returns>A Task that represents the get operation.</returns>
-        public static Task<List<T>> GetItemsAsync<T>()
-            where T : DbObject, new()
-        {
-            var table = _asyncDb.Table<T>();
-            return table.ToListAsync();
-        }
-
-        /// <summary>
-        /// Upserts an item to the database.
-        /// </summary>
-        /// <returns>Amount of modified rows.</returns>
-        public static int Upsert(DbObject item)
-            => _db.InsertOrReplace(item);
-
-        /// <summary>
-        /// Upserts an item to the database asynchronously.
-        /// </summary>
-        /// <returns>A Task that represents the upsert operation,
-        /// with the amount of modified rows.</returns>
-        public static Task<int> UpsertAsync(DbObject item)
-            => _asyncDb.InsertOrReplaceAsync(item);
-
-        /// <summary>
-        /// Queues an item to the database for upserting.
-        /// </summary>
-        /// <returns>A <see cref="System.Boolean" /> which provides the state of the operation.</returns>
-        /// <param name="item">The DB object to queue.</param>
-        public static bool QueueUpsert(DbObject item)
-        {
-            if (!_upsertQueue.Contains(item))
+            await _initLock.WaitAsync().ConfigureAwait(false);
+            try
             {
-                _upsertQueue.Enqueue(item);
-                return true;
+                if (_initialized)
+                    return;
+
+                string dir = Path.GetDirectoryName(DbPath);
+                if (!string.IsNullOrEmpty(dir))
+                    _ = Directory.CreateDirectory(dir);
+
+                _db ??= new SQLiteConnection(DbPath);
+                _asyncDb ??= new SQLiteAsyncConnection(DbPath);
+
+                await _asyncDb.EnableWriteAheadLoggingAsync().ConfigureAwait(false);
+
+                await Task.WhenAll(
+                    _asyncDb.CreateTableAsync<Song>(),
+                    _asyncDb.CreateTableAsync<Artist>(),
+                    _asyncDb.CreateTableAsync<Album>(),
+                    _asyncDb.CreateTableAsync<Genre>(),
+                    _asyncDb.CreateTableAsync<Video>()
+                ).ConfigureAwait(false);
+
+                _initialized = true;
             }
-
-            return false;
-        }
-
-        /// <summary>
-        /// Queues an item to the database for deleting.
-        /// </summary>
-        /// <returns>A <see cref="System.Boolean" /> which provides the state of the operation.</returns>
-        /// <param name="item">The DB object to queue.</param>
-        public static bool QueueRemove(DbObject item)
-        {
-            if (!_removeQueue.Contains(item))
+            finally
             {
-                _removeQueue.Enqueue(item);
-                return true;
+                _ = _initLock.Release();
             }
-
-            return false;
         }
 
-        /// <summary>
-        /// Upserts all queued items asynchronously.
-        /// </summary>
-        /// <returns>A <see cref="Task" /> which represents the operation.</returns>
-        public static async Task UpsertQueuedAsync()
+        public List<T> GetItems<T>() where T : DbObject, new()
+            => _db.Table<T>().ToList();
+
+        public Task<List<T>> GetItemsAsync<T>() where T : DbObject, new()
+            => _asyncDb.Table<T>().ToListAsync();
+
+        public int Upsert(DbObject item)
+            => item != null ? _db.InsertOrReplace(item) : 0;
+
+        public Task<int> UpsertAsync(DbObject item)
+            => item != null ? _asyncDb.InsertOrReplaceAsync(item) : Task.FromResult(0);
+
+        public bool QueueUpsert(DbObject item)
+            => EnqueueUnique(_upsertQueue, item);
+
+        public bool QueueRemove(DbObject item)
+            => EnqueueUnique(_removeQueue, item);
+
+        public async Task UpsertQueuedAsync()
         {
-            _ = await _asyncDb.InsertOrReplaceAllAsync(_upsertQueue);
-            _upsertQueue.Clear();
+            var batch = DrainQueue(_upsertQueue);
+            if (batch.Count > 0)
+                _ = await _asyncDb.InsertOrReplaceAllAsync(batch).ConfigureAwait(false);
         }
 
-        /// <summary>
-        /// Deletes all queued items asynchronously.
-        /// </summary>
-        /// <returns>A <see cref="Task" /> which represents the operation.</returns>
-        public static async Task DeleteQueuedAsync()
+        public async Task DeleteQueuedAsync()
         {
-            _ = await _asyncDb.RemoveAllAsync(_removeQueue);
-            _removeQueue.Clear();
+            var batch = DrainQueue(_removeQueue);
+            if (batch.Count > 0)
+                _ = await _asyncDb.RemoveAllAsync(batch).ConfigureAwait(false);
         }
 
-        /// <summary>
-        /// Removes an item from the database.
-        /// </summary>
-        /// <returns>Amount of rows that were removed.</returns>
-        public static int Delete(DbObject item)
-            => _db.Delete(item);
+        public int Delete(DbObject item)
+            => item != null ? _db.Delete(item) : 0;
 
-        /// <summary>
-        /// Removes an item from the database asynchronously.
-        /// </summary>
-        /// <returns>A Task that represents the removal operation,
-        /// with the amount of rows that were removed.</returns>
-        public static Task<int> DeleteAsync(DbObject item)
-            => _asyncDb.DeleteAsync(item);
+        public Task<int> DeleteAsync(DbObject item)
+            => item != null ? _asyncDb.DeleteAsync(item) : Task.FromResult(0);
 
-        /// <summary>
-        /// Gets the item with the specified Id.
-        /// </summary>
-        /// <typeparam name="T">Desired item type.</typeparam>
-        /// <returns>The item if found, null otherwise.</returns>
-        public static T GetItem<T>(Guid id)
-            where T : DbObject, new()
+        public T GetItem<T>(Guid id) where T : DbObject, new()
         {
             var mapping = _db.GetMapping<T>();
             return _db.Query<T>(mapping.GetByPrimaryKeySql, new object[1] { id }).FirstOrDefault();
         }
 
-        /// <summary>
-        /// Gets the item with the specified Id asynchronously.
-        /// </summary>
-        /// <typeparam name="T">Desired item type.</typeparam>
-        /// <returns>The item if found, null otherwise.</returns>
-        public static async Task<T> GetItemAsync<T>(Guid id)
-            where T : DbObject, new()
+        public async Task<T> GetItemAsync<T>(Guid id) where T : DbObject, new()
         {
             var mapping = await _asyncDb.GetMappingAsync<T>().ConfigureAwait(false);
-            return _db.Query<T>(mapping.GetByPrimaryKeySql, new object[1] { id }).FirstOrDefault();
+            var results = await _asyncDb.QueryAsync<T>(mapping.GetByPrimaryKeySql, new object[1] { id }).ConfigureAwait(false);
+            return results.FirstOrDefault();
         }
+
+        private static bool EnqueueUnique(ConcurrentQueue<DbObject> queue, DbObject item)
+        {
+            if (item == null || queue.Contains(item))
+                return false;
+
+            queue.Enqueue(item);
+            return true;
+        }
+
+        private static List<DbObject> DrainQueue(ConcurrentQueue<DbObject> queue)
+        {
+            var items = new List<DbObject>();
+            while (queue.TryDequeue(out var item))
+                items.Add(item);
+
+            return items;
+        }
+    }
+
+    /// <summary>
+    /// Static facade around the default <see cref="IMediaRepository"/> instance.
+    /// </summary>
+    public static class Repository
+    {
+        private static readonly Lazy<MediaRepository> _default = new(() => new MediaRepository());
+        public static IMediaRepository Default => _default.Value;
+
+        public static string DbPath => _default.Value.DbPath;
+        public static Task InitializeDatabaseAsync() => Default.InitializeAsync();
+        public static List<T> GetItems<T>() where T : DbObject, new() => Default.GetItems<T>();
+        public static Task<List<T>> GetItemsAsync<T>() where T : DbObject, new() => Default.GetItemsAsync<T>();
+        public static int Upsert(DbObject item) => Default.Upsert(item);
+        public static Task<int> UpsertAsync(DbObject item) => Default.UpsertAsync(item);
+        public static bool QueueUpsert(DbObject item) => Default.QueueUpsert(item);
+        public static bool QueueRemove(DbObject item) => Default.QueueRemove(item);
+        public static Task UpsertQueuedAsync() => Default.UpsertQueuedAsync();
+        public static Task DeleteQueuedAsync() => Default.DeleteQueuedAsync();
+        public static int Delete(DbObject item) => Default.Delete(item);
+        public static Task<int> DeleteAsync(DbObject item) => Default.DeleteAsync(item);
+        public static T GetItem<T>(Guid id) where T : DbObject, new() => Default.GetItem<T>(id);
+        public static Task<T> GetItemAsync<T>(Guid id) where T : DbObject, new() => Default.GetItemAsync<T>(id);
     }
 }

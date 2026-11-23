@@ -1,4 +1,4 @@
-﻿using Microsoft.Toolkit.Uwp.Helpers;
+using Microsoft.Toolkit.Uwp.Helpers;
 using Rise.App.ViewModels;
 using System;
 using Windows.System;
@@ -10,31 +10,32 @@ namespace Rise.App.Settings
     public sealed partial class WindowsBehavioursPage : Page
     {
         private SettingsViewModel ViewModel => App.SViewModel;
+        private bool _isInitialized;
 
         public WindowsBehavioursPage()
         {
             InitializeComponent();
-
             Loaded += OnLoaded;
         }
 
         private void OnLoaded(object sender, RoutedEventArgs e)
         {
-            VisualStateManager.GoToState(this, GetInfoBarState(), false);
-            VisualStateManager.GoToState(this, GetVersionState(SystemInformation.Instance.OperatingSystemVersion.Build), false);
+            _isInitialized = true;
+            _ = VisualStateManager.GoToState(this, GetInfoBarState(), false);
+            _ = VisualStateManager.GoToState(this, GetVersionState(SystemInformation.Instance.OperatingSystemVersion.Build), false);
         }
 
         private async void OpenAtStartup_Toggled(object sender, RoutedEventArgs e)
         {
-            await ViewModel.OpenAtStartupAsync();
-            VisualStateManager.GoToState(this, GetInfoBarState(), false);
+            if (!_isInitialized || OpenAtStartup.IsOn == ViewModel.OpenInLogin)
+                return;
+
+            await ViewModel.OpenAtStartupAsync(OpenAtStartup.IsOn);
+            _ = VisualStateManager.GoToState(this, GetInfoBarState(), false);
         }
 
         private async void InfoBarStartupLink_Click(object sender, RoutedEventArgs e)
             => _ = await Launcher.LaunchUriAsync(new Uri(@"ms-settings:startupapps"));
-
-        private async void Update_Click(object sender, RoutedEventArgs e)
-            => _ = await Launcher.LaunchUriAsync(new Uri(@"ms-settings:windowsupdate"));
     }
 
     public partial class WindowsBehavioursPage
@@ -47,7 +48,7 @@ namespace Rise.App.Settings
             _ => "NoRestrictions",
         };
 
-        private string GetVersionState(ushort version) => version switch
+        private static string GetVersionState(ushort version) => version switch
         {
             >= 22000 => "Windows11State",
             >= 21996 => "LeakedBuildState",

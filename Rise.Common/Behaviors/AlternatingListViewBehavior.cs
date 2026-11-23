@@ -1,4 +1,4 @@
-﻿using Microsoft.Toolkit.Uwp.UI;
+using Microsoft.Toolkit.Uwp.UI;
 using Microsoft.Xaml.Interactivity;
 using Windows.Foundation.Collections;
 using Windows.Foundation.Metadata;
@@ -125,8 +125,8 @@ public sealed class AlternatingListViewBehavior : Behavior<ListViewBase>
 
     private void ItemsOnVectorChanged(IObservableVector<object> sender, IVectorChangedEventArgs args)
     {
-        // If the index is at the end we can ignore
-        if (args.Index == (sender.Count - 1))
+        // Only skip when appending at the end; removals at the last index still shift the previous item into the tail.
+        if (args.CollectionChange == CollectionChange.ItemInserted && args.Index == (sender.Count - 1))
             return;
 
         // Only need to handle Inserted and Removed because we'll handle everything else in the

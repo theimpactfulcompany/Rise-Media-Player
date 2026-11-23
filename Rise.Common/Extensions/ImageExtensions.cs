@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Threading.Tasks;
 using Windows.Graphics.Imaging;
 using Windows.Storage;
@@ -20,35 +20,45 @@ namespace Rise.Common.Extensions
         /// </summary>
         public static async Task<SoftwareBitmapSource> GetSourceAsync(this SoftwareBitmap bitmap)
         {
-            if (bitmap.BitmapPixelFormat != BitmapPixelFormat.Bgra8 ||
-                bitmap.BitmapAlphaMode == BitmapAlphaMode.Straight)
+            SoftwareBitmap converted = null;
+            try
             {
-                bitmap = SoftwareBitmap.Convert(bitmap, BitmapPixelFormat.Bgra8,
-                    BitmapAlphaMode.Premultiplied);
+                var target = bitmap;
+                if (bitmap.BitmapPixelFormat != BitmapPixelFormat.Bgra8 ||
+                    bitmap.BitmapAlphaMode == BitmapAlphaMode.Straight)
+                {
+                    converted = SoftwareBitmap.Convert(bitmap, BitmapPixelFormat.Bgra8,
+                        BitmapAlphaMode.Premultiplied);
+                    target = converted;
+                }
+
+                var source = new SoftwareBitmapSource();
+                await source.SetBitmapAsync(target);
+
+                return source;
             }
-
-            var source = new SoftwareBitmapSource();
-            await source.SetBitmapAsync(bitmap);
-
-            return source;
+            finally
+            {
+                converted?.Dispose();
+            }
         }
 
         /// <summary>
         /// Creates a bitmap source from a <see cref="WriteableBitmap"/>.
         /// </summary>
-        public static Task<SoftwareBitmapSource> GetSourceAsync(this WriteableBitmap bitmap)
+        public static async Task<SoftwareBitmapSource> GetSourceAsync(this WriteableBitmap bitmap)
         {
-            var bmp = SoftwareBitmap.CreateCopyFromBuffer(
+            using var copied = SoftwareBitmap.CreateCopyFromBuffer(
                 bitmap.PixelBuffer,
                 BitmapPixelFormat.Bgra8,
                 bitmap.PixelWidth,
                 bitmap.PixelHeight
             );
 
-            bmp = SoftwareBitmap.Convert(bmp, BitmapPixelFormat.Bgra8,
+            using var converted = SoftwareBitmap.Convert(copied, BitmapPixelFormat.Bgra8,
                 BitmapAlphaMode.Premultiplied);
 
-            return bmp.GetSourceAsync();
+            return await converted.GetSourceAsync();
         }
     }
 
@@ -137,14 +147,14 @@ namespace Rise.Common.Extensions
         /// <param name="outputFile"><see cref="StorageFile"/> where the <see cref="SoftwareBitmap"/>
         /// should be stored.</param>
         /// <returns>Whether or not the operation was successful.</returns>
-        public static Task<bool> SaveToFileAsync(this WriteableBitmap bitmap, StorageFile outputFile)
+        public static async Task<bool> SaveToFileAsync(this WriteableBitmap bitmap, StorageFile outputFile)
         {
-            var bmp = SoftwareBitmap.CreateCopyFromBuffer(bitmap.PixelBuffer,
+            using var bmp = SoftwareBitmap.CreateCopyFromBuffer(bitmap.PixelBuffer,
                 BitmapPixelFormat.Bgra8,
                 bitmap.PixelWidth,
                 bitmap.PixelHeight);
 
-            return bmp.SaveToFileAsync(outputFile);
+            return await bmp.SaveToFileAsync(outputFile);
         }
 
         /// <summary>
@@ -209,6 +219,7 @@ namespace Rise.Common.Extensions
                 {
                     var destinationFile = await destination.CreateFileAsync(filename, collisionOption);
 
+                    thumbnail.Seek(0);
                     Buffer buffer = new(Convert.ToUInt32(thumbnail.Size));
                     IBuffer iBuf = await thumbnail.ReadAsync(buffer,
                         buffer.Capacity, InputStreamOptions.None);

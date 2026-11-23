@@ -1,4 +1,4 @@
-﻿using Rise.Data.ViewModels;
+using Rise.Data.ViewModels;
 using System;
 using Windows.Media.Playback;
 using Windows.UI.Xaml;
@@ -36,31 +36,30 @@ namespace Rise.App.UserControls
     public sealed partial class DefaultQueueFlyout
     {
         private void MenuFlyout_Opening(object sender, object e)
-        {
-            var fl = sender as MenuFlyout;
-            var cont = MainList.ItemFromContainer(fl.Target);
-
-            if (cont == null)
-                fl.Hide();
-            else
-                SelectedItem = (MediaPlaybackItem)cont;
-        }
+            => MediaPageBase.HandleMenuFlyoutOpening<MediaPlaybackItem>(sender, MainList, item => SelectedItem = item);
 
         private void PlayItem_Click(object sender, RoutedEventArgs e)
         {
+            if (SelectedItem == null)
+                return;
+
             if (PlaybackList.CurrentItem == SelectedItem)
             {
-                MPViewModel.Player.PlaybackSession.Position = new TimeSpan(0);
+                if (MPViewModel.PlayerCreated)
+                    MPViewModel.Player.PlaybackSession.Position = TimeSpan.Zero;
+                return;
             }
-            else
-            {
-                int index = MainList.SelectedIndex;
+
+            int index = PlaybackList.Items.IndexOf(SelectedItem);
+            if (index >= 0)
                 PlaybackList.MoveTo((uint)index);
-            }
         }
 
         private void RemoveItem_Click(object sender, RoutedEventArgs e)
         {
+            if (SelectedItem == null)
+                return;
+
             int index = PlaybackList.Items.IndexOf(SelectedItem);
             if (PlaybackList.CurrentItem == SelectedItem)
                 PlaybackList.MoveNext();
@@ -70,33 +69,33 @@ namespace Rise.App.UserControls
         }
 
         private void MoveItemUp_Click(object sender, RoutedEventArgs e)
-        {
-            MoveItem(-1);
-        }
+            => MoveItem(-1);
 
         private void MoveItemDown_Click(object sender, RoutedEventArgs e)
-        {
-            MoveItem(1);
-        }
+            => MoveItem(1);
 
         private void MoveItem(int offset)
         {
+            if (SelectedItem == null)
+                return;
+
             int index = PlaybackList.Items.IndexOf(SelectedItem);
-            if (index + offset < PlaybackList.Items.Count &&
-                index + offset >= 0)
+            int targetIndex = index + offset;
+            if (index >= 0 && targetIndex >= 0 && targetIndex < PlaybackList.Items.Count)
             {
                 PlaybackList.Items.RemoveAt(index);
-                PlaybackList.Items.Insert(index + offset, SelectedItem);
+                PlaybackList.Items.Insert(targetIndex, SelectedItem);
             }
         }
 
         private void MainList_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
         {
-            var itm = (e.OriginalSource as FrameworkElement).DataContext as MediaPlaybackItem;
-
-            int index = PlaybackList.Items.IndexOf(itm);
-            if (index >= 0)
-                PlaybackList.MoveTo((uint)index);
+            if ((e.OriginalSource as FrameworkElement)?.DataContext is MediaPlaybackItem itm)
+            {
+                int index = PlaybackList.Items.IndexOf(itm);
+                if (index >= 0)
+                    PlaybackList.MoveTo((uint)index);
+            }
         }
     }
 }

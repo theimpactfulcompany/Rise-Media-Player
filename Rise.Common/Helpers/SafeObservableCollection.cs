@@ -1,8 +1,10 @@
-﻿using System;
+using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.Linq;
 using System.Threading;
 
 namespace Rise.Common.Helpers
@@ -13,6 +15,8 @@ namespace Rise.Common.Helpers
     /// <typeparam name="T">The type of elements in the collection.</typeparam>
     public partial class SafeObservableCollection<T> : ObservableCollection<T>
     {
+        private readonly object _syncLock = new();
+
         /// <summary>
         /// Initializes a new instance of the
         /// <see cref="SafeObservableCollection{T}"/> class.
@@ -41,19 +45,26 @@ namespace Rise.Common.Helpers
         /// </summary>
         public void AddRange(IEnumerable<T> items)
         {
+            if (items == null)
+                throw new ArgumentNullException(nameof(items));
+
+            IList addedItems = items as IList ?? items.ToList();
+            if (addedItems.Count == 0)
+                return;
+
             CheckReentrancy();
 
             int startIndex = Count;
-            foreach (T item in items)
+            foreach (T item in addedItems)
             {
-                this.Items.Add(item);
+                Items.Add(item);
             }
 
             OnPropertyChanged(new PropertyChangedEventArgs(nameof(Count)));
             OnPropertyChanged(new PropertyChangedEventArgs("Item[]"));
 
-            OnCollectionChanged(new NotifyCollectionChangedEventArgs
-                (NotifyCollectionChangedAction.Add, items, startIndex));
+            OnCollectionChanged(new NotifyCollectionChangedEventArgs(
+                NotifyCollectionChangedAction.Add, addedItems, startIndex));
         }
 
         /// <summary>
@@ -62,15 +73,16 @@ namespace Rise.Common.Helpers
         /// </summary>
         public void RemoveRange(IEnumerable<T> items)
         {
+            if (items == null)
+                throw new ArgumentNullException(nameof(items));
+
             CheckReentrancy();
 
             bool raiseEvents = false;
             foreach (T item in items)
             {
-                if (this.Items.Remove(item))
-                {
+                if (Items.Remove(item))
                     raiseEvents = true;
-                }
             }
 
             if (raiseEvents)
@@ -78,30 +90,30 @@ namespace Rise.Common.Helpers
                 OnPropertyChanged(new PropertyChangedEventArgs(nameof(Count)));
                 OnPropertyChanged(new PropertyChangedEventArgs("Item[]"));
 
-                OnCollectionChanged(new NotifyCollectionChangedEventArgs
-                    (NotifyCollectionChangedAction.Reset));
+                OnCollectionChanged(new NotifyCollectionChangedEventArgs(
+                    NotifyCollectionChangedAction.Reset));
             }
         }
     }
 
     public partial class SafeObservableCollection<T>
     {
-        // Property change events
-        private readonly Dictionary<NotifyCollectionChangedEventHandler, SynchronizationContext> CollectionChangedEvents =
-            new Dictionary<NotifyCollectionChangedEventHandler, SynchronizationContext>();
-
-        private readonly Dictionary<PropertyChangedEventHandler, SynchronizationContext> PropertyChangedEvents =
-            new Dictionary<PropertyChangedEventHandler, SynchronizationContext>();
+        private readonly Dictionary<NotifyCollectionChangedEventHandler, SynchronizationContext> CollectionChangedEvents = new();
+        private readonly Dictionary<PropertyChangedEventHandler, SynchronizationContext> PropertyChangedEvents = new();
 
         public override event NotifyCollectionChangedEventHandler CollectionChanged
         {
             add
             {
-                CollectionChangedEvents.Add(value, SynchronizationContext.Current);
+                if (value == null) return;
+                lock (_syncLock)
+                    CollectionChangedEvents[value] = SynchronizationContext.Current;
             }
             remove
             {
-                CollectionChangedEvents.Remove(value);
+                if (value == null) return;
+                lock (_syncLock)
+                    _ = CollectionChangedEvents.Remove(value);
             }
         }
 
@@ -109,44 +121,62 @@ namespace Rise.Common.Helpers
         {
             add
             {
-                PropertyChangedEvents.Add(value, SynchronizationContext.Current);
+                if (value == null) return;
+                lock (_syncLock)
+                    PropertyChangedEvents[value] = SynchronizationContext.Current;
             }
             remove
             {
-                PropertyChangedEvents.Remove(value);
+                if (value == null) return;
+                lock (_syncLock)
+                    _ = PropertyChangedEvents.Remove(value);
             }
         }
 
         protected override void OnCollectionChanged(NotifyCollectionChangedEventArgs e)
         {
+            KeyValuePair<NotifyCollectionChangedEventHandler, SynchronizationContext>[] snapshot;
+            lock (_syncLock)
+            {
+                if (CollectionChangedEvents.Count == 0)
+                    return;
+
+                snapshot = CollectionChangedEvents.ToArray();
+            }
+
             using (BlockReentrancy())
             {
-                foreach (KeyValuePair<NotifyCollectionChangedEventHandler, SynchronizationContext> @event in CollectionChangedEvents)
+                foreach (var entry in snapshot)
                 {
-                    if (@event.Value == null)
-                    {
-                        @event.Key.Invoke(this, e);
-                    }
+                    var handler = entry.Key;
+                    var context = entry.Value;
+                    if (context == null || context == SynchronizationContext.Current)
+                        handler.Invoke(this, e);
                     else
-                    {
-                        @event.Value.Post(s => @event.Key.Invoke(s, e), this);
-                    }
+                        context.Post(s => handler.Invoke(s, e), this);
                 }
             }
         }
 
         protected override void OnPropertyChanged(PropertyChangedEventArgs e)
         {
-            foreach (KeyValuePair<PropertyChangedEventHandler, SynchronizationContext> @event in PropertyChangedEvents)
+            KeyValuePair<PropertyChangedEventHandler, SynchronizationContext>[] snapshot;
+            lock (_syncLock)
             {
-                if (@event.Value == null)
-                {
-                    @event.Key.Invoke(this, e);
-                }
+                if (PropertyChangedEvents.Count == 0)
+                    return;
+
+                snapshot = PropertyChangedEvents.ToArray();
+            }
+
+            foreach (var entry in snapshot)
+            {
+                var handler = entry.Key;
+                var context = entry.Value;
+                if (context == null || context == SynchronizationContext.Current)
+                    handler.Invoke(this, e);
                 else
-                {
-                    @event.Value.Post(s => @event.Key.Invoke(s, e), this);
-                }
+                    context.Post(s => handler.Invoke(s, e), this);
             }
         }
     }

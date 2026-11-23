@@ -1,8 +1,9 @@
-﻿using Rise.App.ViewModels;
+using Rise.App.ViewModels;
+using Rise.Common.Extensions;
 using System;
-using System.Diagnostics;
-using Windows.Storage;
+using System.IO;
 using Windows.System;
+using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Navigation;
 
@@ -20,16 +21,25 @@ namespace Rise.App.Views
         protected override void OnNavigatedTo(NavigationEventArgs e)
         {
             if (e.Parameter is SongPropertiesViewModel props)
-            {
                 Props = props;
-            }
 
             base.OnNavigatedTo(e);
         }
 
-        private async void OpenFileLocation_Click(object sender, Windows.UI.Xaml.RoutedEventArgs e)
+        private async void OpenFileLocation_Click(object sender, RoutedEventArgs e)
         {
-            _ = await Launcher.LaunchFolderPathAsync(Props.Location.Replace(Props.Filename, string.Empty));
+            string folder = Path.GetDirectoryName(Props?.Location);
+            if (string.IsNullOrEmpty(folder))
+                return;
+
+            try
+            {
+                _ = await Launcher.LaunchFolderPathAsync(folder);
+            }
+            catch (Exception ex)
+            {
+                ex.WriteToOutput();
+            }
         }
     }
 }

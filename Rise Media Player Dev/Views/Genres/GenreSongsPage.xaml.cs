@@ -1,4 +1,4 @@
-﻿using Rise.App.UserControls;
+using Rise.App.UserControls;
 using Rise.App.ViewModels;
 using Rise.Common.Extensions;
 using Rise.Common.Helpers;
@@ -24,7 +24,6 @@ namespace Rise.App.Views
         }
 
         private GenreViewModel SelectedGenre;
-
         private CompositionPropertySet _propSet;
         private SpriteVisual _backgroundVisual;
 
@@ -42,19 +41,13 @@ namespace Rise.App.Views
         private void NavigationHelper_LoadState(object sender, LoadStateEventArgs e)
         {
             if (e.NavigationParameter is Guid id)
-            {
-                SelectedGenre = MViewModel.Genres.
-                    FirstOrDefault(g => g.Model.Id == id);
-            }
+                SelectedGenre = MViewModel.Genres.FirstOrDefault(g => g.Model.Id == id);
             else if (e.NavigationParameter is string str)
-            {
-                SelectedGenre = MViewModel.Genres.
-                    FirstOrDefault(g => g.Name == str);
-            }
+                SelectedGenre = MViewModel.Genres.FirstOrDefault(g => g.Name == str);
 
             CreateViewModel("SongTitle", SortDirection.Ascending, false, IsGenre, MViewModel.Songs);
             bool IsGenre(object s)
-                => ((SongViewModel)s).Genres == SelectedGenre.Name;
+                => SelectedGenre != null && ((SongViewModel)s).Genres == SelectedGenre.Name;
         }
 
         private void OnMainListLoaded(object sender, RoutedEventArgs e)
@@ -68,21 +61,10 @@ namespace Rise.App.Views
     public sealed partial class GenreSongsPage
     {
         private void MainList_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
-        {
-            if ((e.OriginalSource as FrameworkElement).DataContext is SongViewModel song)
-                MediaViewModel.PlayFromItemCommand.Execute(song);
-        }
+            => HandleDoubleTappedPlay<SongViewModel>(e);
 
         private void MenuFlyout_Opening(object sender, object e)
-        {
-            var fl = sender as MenuFlyout;
-            var cont = MainList.ItemFromContainer(fl.Target);
-
-            if (cont == null)
-                fl.Hide();
-            else
-                SelectedItem = (SongViewModel)cont;
-        }
+            => HandleMenuFlyoutOpening<SongViewModel>(sender, MainList, item => SelectedItem = item);
 
         private void BackgroundHost_SizeChanged(object sender, SizeChangedEventArgs e)
         {

@@ -1,16 +1,12 @@
 using Rise.Data.ViewModels;
 using System;
 using System.Collections.Generic;
-using System.Text.Json.Serialization;
 
 namespace Rise.Data.Navigation
 {
     /// <summary>
     /// A base class for items to be placed in a NavigationView.
     /// </summary>
-    [JsonDerivedType(typeof(NavigationItemSeparator), (int)NavigationItemType.Separator)]
-    [JsonDerivedType(typeof(NavigationItemHeader), (int)NavigationItemType.Header)]
-    [JsonDerivedType(typeof(NavigationItemDestination), (int)NavigationItemType.Destination)]
     public abstract class NavigationItemBase : ViewModel, IEquatable<NavigationItemBase>
     {
         /// <summary>

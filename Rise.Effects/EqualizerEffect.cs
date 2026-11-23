@@ -1,9 +1,8 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.InteropServices.WindowsRuntime;
 using NAudio.Dsp;
-using Rise.Common.Helpers;
 using Windows.Foundation;
 using Windows.Foundation.Collections;
 using Windows.Media;
@@ -57,13 +56,18 @@ namespace Rise.Effects
         private BiQuadFilter[,] filters;
         private int channels;
         private int bandCount;
-        private IPropertySet configuration;
 
         /// <summary>
         /// Initializes the EQ bands with the specified gains.
         /// </summary>
         public void InitializeBands([ReadOnlyArray] float[] gains)
         {
+            if (gains == null)
+                throw new ArgumentNullException(nameof(gains));
+
+            if (gains.Length < 10)
+                throw new ArgumentException("At least 10 equalizer band gains are required.", nameof(gains));
+
             if (Bands.Count > 0)
                 return;
 
@@ -80,7 +84,7 @@ namespace Rise.Effects
                 new EqualizerBand { Index = 0, Bandwidth = 0.8f, Frequency = 30, Gain = gains[0] - max },
                 new EqualizerBand { Index = 1, Bandwidth = 0.8f, Frequency = 75, Gain = gains[1] - max },
                 new EqualizerBand { Index = 2, Bandwidth = 0.8f, Frequency = 150, Gain = gains[2] - max },
-                new EqualizerBand { Index = 3, Bandwidth = 0.8f, Frequency = 30, Gain = gains[3] - max },
+                new EqualizerBand { Index = 3, Bandwidth = 0.8f, Frequency = 300, Gain = gains[3] - max },
                 new EqualizerBand { Index = 4, Bandwidth = 0.8f, Frequency = 600, Gain = gains[4] - max },
                 new EqualizerBand { Index = 5, Bandwidth = 0.8f, Frequency = 1250, Gain = gains[5] - max },
                 new EqualizerBand { Index = 6, Bandwidth = 0.8f, Frequency = 2500, Gain = gains[6] - max },
@@ -98,6 +102,12 @@ namespace Rise.Effects
         /// </summary>
         public void UpdateBand(int index)
         {
+            if (filters == null || currentEncodingProperties == null ||
+                index < 0 || index >= Bands.Count || index >= filters.GetLength(1))
+            {
+                return;
+            }
+
             var band = Bands[index];
             for (int n = 0; n < channels; n++)
             {
@@ -137,7 +147,7 @@ namespace Rise.Effects
             // Check if we don't have the effect enabled in the configuration.
             // This is a workaround for the fact that MediaPlayer does not
             // have a way to remove/disable the effect.
-            if (!IsEnabled)
+            if (!IsEnabled || filters == null || channels <= 0 || bandCount <= 0)
                 return;
 
             unsafe
@@ -160,7 +170,9 @@ namespace Rise.Effects
                         // Cascaded filter to perform EQ
                         for (int band = 0; band < bandCount; band++)
                         {
-                            inputDataInFloat[n] = filters[ch, band].Transform(inputDataInFloat[n]);
+                            var filter = filters[ch, band];
+                            if (filter != null)
+                                inputDataInFloat[n] = filter.Transform(inputDataInFloat[n]);
                         }
                     }
                 }
@@ -169,26 +181,16 @@ namespace Rise.Effects
 
         private void CloseImpl(MediaEffectClosedReason reason)
         {
-            switch (reason)
+            if (reason == MediaEffectClosedReason.EffectCurrentlyUnloaded)
             {
-                case MediaEffectClosedReason.Done:
-                case MediaEffectClosedReason.UnknownError:
-                case MediaEffectClosedReason.UnsupportedEncodingFormat:
-                default:
-                    break;
-                case MediaEffectClosedReason.EffectCurrentlyUnloaded:
-                    if (filters != null)
-                        for (int i = 0; i < filters.Rank; i++)
-                        {
-                            for (int j = 0; j < filters.GetLength(i); j++)
-                            {
-                                filters[i, j] = null;
-                            }
-                        }
-                    channels = 0;
-                    bandCount = 0;
+                if (filters != null)
+                {
+                    Array.Clear(filters, 0, filters.Length);
                     filters = null;
-                    break;
+                }
+
+                channels = 0;
+                bandCount = 0;
             }
         }
     }
@@ -204,29 +206,21 @@ namespace Rise.Effects
             {
                 if (_supportedEncodingProperties == null)
                 {
-                    _supportedEncodingProperties = new List<AudioEncodingProperties>();
+                    var supported = new List<AudioEncodingProperties>();
+                    (uint sampleRate, uint channelCount)[] formats =
+                    {
+                        (44100, 1), (48000, 1),
+                        (44100, 2), (48000, 2), (96000, 2), (192000, 2)
+                    };
 
-                    AudioEncodingProperties encodingProps1 = AudioEncodingProperties.CreatePcm(44100, 1, 32);
-                    encodingProps1.Subtype = MediaEncodingSubtypes.Float;
-                    AudioEncodingProperties encodingProps2 = AudioEncodingProperties.CreatePcm(48000, 1, 32);
-                    encodingProps2.Subtype = MediaEncodingSubtypes.Float;
+                    foreach (var (sampleRate, channelCount) in formats)
+                    {
+                        var props = AudioEncodingProperties.CreatePcm(sampleRate, channelCount, 32);
+                        props.Subtype = MediaEncodingSubtypes.Float;
+                        supported.Add(props);
+                    }
 
-                    AudioEncodingProperties encodingProps3 = AudioEncodingProperties.CreatePcm(44100, 2, 32);
-                    encodingProps3.Subtype = MediaEncodingSubtypes.Float;
-                    AudioEncodingProperties encodingProps4 = AudioEncodingProperties.CreatePcm(48000, 2, 32);
-                    encodingProps4.Subtype = MediaEncodingSubtypes.Float;
-
-                    AudioEncodingProperties encodingProps5 = AudioEncodingProperties.CreatePcm(96000, 2, 32);
-                    encodingProps5.Subtype = MediaEncodingSubtypes.Float;
-                    AudioEncodingProperties encodingProps6 = AudioEncodingProperties.CreatePcm(192000, 2, 32);
-                    encodingProps6.Subtype = MediaEncodingSubtypes.Float;
-
-                    _supportedEncodingProperties.Add(encodingProps1);
-                    _supportedEncodingProperties.Add(encodingProps2);
-                    _supportedEncodingProperties.Add(encodingProps3);
-                    _supportedEncodingProperties.Add(encodingProps4);
-                    _supportedEncodingProperties.Add(encodingProps5);
-                    _supportedEncodingProperties.Add(encodingProps6);
+                    _supportedEncodingProperties = supported;
                 }
 
                 return _supportedEncodingProperties;
@@ -254,8 +248,6 @@ namespace Rise.Effects
 
         public void SetProperties(IPropertySet configuration)
         {
-            if (Current != null)
-                Current.configuration = configuration;
         }
     }
 }

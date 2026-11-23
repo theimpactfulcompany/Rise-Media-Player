@@ -1,4 +1,5 @@
-﻿using Rise.App.ViewModels;
+using Rise.App.UserControls;
+using Rise.App.ViewModels;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Navigation;
@@ -22,34 +23,20 @@ namespace Rise.App.Views
 
         private void RemoveSong_Click(object sender, RoutedEventArgs e)
         {
-            SongViewModel song = (sender as Button).Tag as SongViewModel;
-            Playlist.Songs.Remove(song);
+            if (Playlist != null && (sender as FrameworkElement)?.Tag is SongViewModel song)
+                _ = Playlist.Songs.Remove(song);
         }
 
         private void MoveBottom_Click(object sender, RoutedEventArgs e)
         {
-            SongViewModel song = (sender as Button).Tag as SongViewModel;
-
-            if ((Playlist.Songs.IndexOf(song) + 1) < Playlist.Songs.Count)
-            {
-                var index = Playlist.Songs.IndexOf(song);
-
-                Playlist.Songs.Remove(song);
-                Playlist.Songs.Insert(index + 1, song);
-            }
+            if (Playlist != null)
+                _ = MediaPageBase.MovePlaylistItem(Playlist.Songs, (sender as FrameworkElement)?.Tag, 1);
         }
 
         private void MoveUp_Click(object sender, RoutedEventArgs e)
         {
-            SongViewModel song = (sender as Button).Tag as SongViewModel;
-
-            if ((Playlist.Songs.IndexOf(song) - 1) >= 0)
-            {
-                var index = Playlist.Songs.IndexOf(song);
-
-                Playlist.Songs.Remove(song);
-                Playlist.Songs.Insert(index - 1, song);
-            }
+            if (Playlist != null)
+                _ = MediaPageBase.MovePlaylistItem(Playlist.Songs, (sender as FrameworkElement)?.Tag, -1);
         }
     }
 }

@@ -1,35 +1,24 @@
-﻿using Rise.App.Views;
+using Rise.App.Views;
 using Rise.Common.Constants;
 using Rise.Common.Extensions;
 using Rise.Common.Extensions.Markup;
-using Rise.Common.Helpers;
 using System;
 using System.Linq;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 
-// The Blank Page item template is documented at https://go.microsoft.com/fwlink/?LinkId=234238
-
 namespace Rise.App.Settings
 {
-    /// <summary>
-    /// An empty page that can be used on its own or navigated to within a Frame.
-    /// </summary>
     public sealed partial class AllSettingsPage : Page
     {
-        private readonly NavigationHelper _navigationHelper;
-        public static AllSettingsPage Current;
-
         public AllSettingsPage()
         {
             InitializeComponent();
-            _navigationHelper = new NavigationHelper(this);
-            Current = this;
 
             TitleBar.SetTitleBarForCurrentView();
 
+            SettingsMainFrame.Navigated += (_, _) => FinishNavigation();
             _ = SettingsMainFrame.Navigate(typeof(AppearanceBasePage));
-            FinishNavigation();
         }
 
         private async void FeedbackSettings_Click(object sender, RoutedEventArgs e)
@@ -40,13 +29,11 @@ namespace Rise.App.Settings
         private void Insider_Click(object sender, RoutedEventArgs e)
         {
             _ = SettingsMainFrame.Navigate(typeof(InsiderPage));
-            FinishNavigation();
         }
 
         private void Language_Click(object sender, RoutedEventArgs e)
         {
             _ = SettingsMainFrame.Navigate(typeof(LanguagePage));
-            FinishNavigation();
         }
 
         private void SettingsSidebar_ItemInvoked(Microsoft.UI.Xaml.Controls.NavigationView sender, Microsoft.UI.Xaml.Controls.NavigationViewItemInvokedEventArgs args)
@@ -62,24 +49,20 @@ namespace Rise.App.Settings
                     "Playback" => typeof(PlaybackPage),
                     "Behaviour" => typeof(WindowsBehavioursPage),
                     "About" => typeof(AboutPage),
-                    _ => typeof(MediaSourcesPage),
+                    _ => typeof(MediaLibraryBasePage),
                 };
 
                 if (SettingsMainFrame.CurrentSourcePageType != page)
                 {
                     _ = SettingsMainFrame.Navigate(page, null, args.RecommendedNavigationTransitionInfo);
                     SettingsMainFrame.BackStack.Clear();
-
-                    FinishNavigation();
                 }
             }
         }
 
         private void FinishNavigation()
         {
-            string type = SettingsMainFrame.CurrentSourcePageType.ToString();
-            string tag = type.Split('.').Last();
-
+            string tag = SettingsMainFrame.CurrentSourcePageType?.Name;
             switch (tag)
             {
                 case "AppearanceBasePage":
@@ -89,6 +72,10 @@ namespace Rise.App.Settings
                 case "MediaLibraryBasePage":
                     MainSettingsHeaderIcon.Glyph = "\uEA69";
                     MainSettingsHeader.Text = ResourceHelper.GetString("MediaLibrary");
+                    break;
+                case "MediaSourcesPage":
+                    MainSettingsHeaderIcon.Glyph = "\uE838";
+                    MainSettingsHeader.Text = ResourceHelper.GetString("/Settings/MediaLibraryManageFoldersTitle");
                     break;
                 case "NavigationPage":
                     MainSettingsHeaderIcon.Glyph = "\uE8B0";
@@ -124,10 +111,7 @@ namespace Rise.App.Settings
         private void GoBackAPage_Click(object sender, RoutedEventArgs e)
         {
             if (SettingsMainFrame.CanGoBack)
-            {
                 SettingsMainFrame.GoBack();
-                FinishNavigation();
-            }
         }
 
         private void BackButton_Click(object sender, RoutedEventArgs e)

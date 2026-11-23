@@ -1,4 +1,4 @@
-﻿using Rise.Common.Extensions.Markup;
+using Rise.Common.Extensions.Markup;
 using System;
 using Windows.UI.Xaml.Data;
 
@@ -8,18 +8,20 @@ namespace Rise.App.Converters
     {
         public object Convert(object value, Type targetType, object parameter, string language)
         {
+            string key = value?.ToString();
+            if (string.IsNullOrEmpty(key))
+                return string.Empty;
+
             if (parameter != null)
             {
                 string loader = parameter.ToString();
-                return ResourceHelper.GetString($"/{loader}/{value}");
+                return ResourceHelper.GetString($"/{loader}/{key}");
             }
 
-            return ResourceHelper.GetString(value.ToString());
+            return ResourceHelper.GetString(key);
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, string language)
-        {
-            throw new NotSupportedException();
-        }
+            => throw new NotSupportedException();
     }
 }

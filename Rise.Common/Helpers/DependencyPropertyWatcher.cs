@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Windows.UI.Core;
 using Windows.UI.Xaml;
 
@@ -21,6 +21,7 @@ namespace Rise.Common.Helpers
         public DependencyProperty WatchedProperty { get; }
 
         private readonly long _token;
+        private bool _disposed;
 
         /// <summary>
         /// Represents the method that will handle events that occur when a
@@ -41,18 +42,27 @@ namespace Rise.Common.Helpers
         /// </summary>
         public DependencyPropertyWatcher(DependencyObject obj, DependencyProperty property)
         {
-            WatchedObject = obj;
-            WatchedProperty = property;
+            WatchedObject = obj ?? throw new ArgumentNullException(nameof(obj));
+            WatchedProperty = property ?? throw new ArgumentNullException(nameof(property));
 
             _token = obj.RegisterPropertyChangedCallback(property, PropertyChangedCallback);
         }
 
         private void PropertyChangedCallback(DependencyObject sender, DependencyProperty dp)
         {
+            if (_disposed)
+                return;
+
             _ = sender.Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
             {
+                if (_disposed)
+                    return;
+
                 object val = sender.GetValue(dp);
-                PropertyChanged?.Invoke(this, (T)val);
+                if (val is T typedValue)
+                    PropertyChanged?.Invoke(this, typedValue);
+                else if (val == null && default(T) == null)
+                    PropertyChanged?.Invoke(this, default);
             });
         }
 
@@ -61,6 +71,10 @@ namespace Rise.Common.Helpers
         /// </summary>
         public void Dispose()
         {
+            if (_disposed)
+                return;
+
+            _disposed = true;
             WatchedObject.UnregisterPropertyChangedCallback(WatchedProperty, _token);
         }
     }

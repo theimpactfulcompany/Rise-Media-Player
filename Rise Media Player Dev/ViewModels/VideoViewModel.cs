@@ -1,4 +1,4 @@
-﻿using Rise.Common.Constants;
+using Rise.Common.Constants;
 using Rise.Common.Extensions;
 using Rise.Common.Helpers;
 using Rise.Common.Interfaces;
@@ -153,54 +153,6 @@ namespace Rise.App.ViewModels
         }
         #endregion
 
-        #region Backend
-        /// <summary>
-        /// Saves item data to the backend.
-        /// </summary>
-        public async Task SaveAsync(bool queue = false)
-        {
-            if (!App.MViewModel.Videos.Contains(this))
-            {
-                App.MViewModel.Videos.Add(this);
-            }
-
-            if (queue)
-            {
-                NewRepository.Repository.QueueUpsert(Model);
-            }
-            else
-            {
-                await NewRepository.Repository.UpsertAsync(Model);
-            }
-        }
-
-        /// <summary>
-        /// Deletes item data from the backend.
-        /// </summary>
-        public async Task DeleteAsync(bool queue = false)
-        {
-            if (App.MViewModel.Videos.Contains(this))
-            {
-                App.MViewModel.Videos.Remove(this);
-
-                if (queue)
-                    NewRepository.Repository.QueueRemove(Model);
-                else
-                    await NewRepository.Repository.DeleteAsync(Model);
-            }
-        }
-        #endregion
-
-        #region Editing
-        /// <summary>
-        /// Discards any edits that have been made, restoring the original values.
-        /// </summary>
-        public async Task CancelEditsAsync()
-        {
-            Model = await NewRepository.Repository.GetItemAsync<Video>(Model.Id);
-        }
-        #endregion
-
         #region Playback
         /// <summary>
         /// Creates a <see cref="MediaPlaybackItem"/> from this <see cref="VideoViewModel"/>.
@@ -224,15 +176,25 @@ namespace Rise.App.ViewModels
     {
         public static Task<VideoViewModel> AsVideoAsync(this MediaPlaybackItem item)
         {
+            if (item == null)
+                return Task.FromResult<VideoViewModel>(null);
+
             var displayProps = item.GetDisplayProperties();
+            var customProps = item.Source?.CustomProperties;
+            string location = customProps != null && customProps.TryGetValue("Location", out var loc) && loc is string locStr
+                ? locStr
+                : item.Source?.Uri?.ToString() ?? string.Empty;
+            uint year = customProps != null && customProps.TryGetValue("Year", out var y) && y is uint parsedYear
+                ? parsedYear
+                : 0u;
 
             var video = new VideoViewModel
             {
                 Title = displayProps.VideoProperties.Title,
-                Directors = item.Source.CustomProperties["Artists"] as string,
-                Location = item.Source.Uri.ToString(),
-                Year = (uint)item.Source.CustomProperties["Year"],
-                Length = (TimeSpan)item.Source.Duration,
+                Directors = customProps != null && customProps.TryGetValue("Artists", out var artists) ? artists as string : displayProps.VideoProperties.Subtitle,
+                Location = location,
+                Year = year,
+                Length = item.Source?.Duration ?? TimeSpan.Zero,
                 Thumbnail = URIs.VideoThumb
             };
 

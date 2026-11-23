@@ -1,4 +1,4 @@
-﻿using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Input;
 using Rise.App.Helpers;
 using Rise.Common.Extensions;
 using Rise.Common.Helpers;
@@ -198,32 +198,27 @@ namespace Rise.App.ViewModels
         /// </summary>
         private readonly CancellableTaskHelper PlaybackCancelHelper = new();
 
-        [RelayCommand(AllowConcurrentExecutions = true)]
-        private async Task PlayFromItemAsync(object parameter)
+        private async Task ExecuteCancellableAsync(Func<CancellationToken, Task> operation)
         {
             try
             {
-                await PlaybackCancelHelper.CompletePendingAsync(new CancellationToken());
-                await PlaybackCancelHelper.RunAsync(GetPlayFromTask(parameter));
+                await PlaybackCancelHelper.CompletePendingAsync(CancellationToken.None);
+                await PlaybackCancelHelper.RunAsync(operation(PlaybackCancelHelper.Token));
             }
             catch (OperationCanceledException) { }
         }
 
         [RelayCommand(AllowConcurrentExecutions = true)]
-        private async Task PlaySingleItemAsync(object parameter)
+        private Task PlayFromItemAsync(object parameter)
+            => ExecuteCancellableAsync(token => GetPlayFromTask(parameter, token));
+
+        [RelayCommand(AllowConcurrentExecutions = true)]
+        private Task PlaySingleItemAsync(object parameter)
         {
             if (parameter == null)
-            {
-                await PlayFromItemAsync(parameter);
-                return;
-            }
+                return PlayFromItemAsync(null);
 
-            try
-            {
-                await PlaybackCancelHelper.CompletePendingAsync(new CancellationToken());
-                await PlaybackCancelHelper.RunAsync(GetPlaySingleTask(parameter));
-            }
-            catch (OperationCanceledException) { }
+            return ExecuteCancellableAsync(token => GetPlaySingleTask(parameter, token));
         }
 
         [RelayCommand(AllowConcurrentExecutions = true)]
@@ -240,49 +235,43 @@ namespace Rise.App.ViewModels
             return PlaySingleItemAsync(parameter);
         }
 
-        private Task GetPlaySingleTask(object parameter)
+        private Task GetPlaySingleTask(object parameter, CancellationToken token) => parameter switch
         {
-            if (parameter is AlbumViewModel album)
-                return PlaySingleAlbumAsync(album, PlaybackCancelHelper.Token);
-            else if (parameter is ArtistViewModel artist)
-                return PlaySingleArtistAsync(artist, PlaybackCancelHelper.Token);
-            else if (parameter is GenreViewModel genre)
-                return PlaySingleGenreAsync(genre, PlaybackCancelHelper.Token);
-            else if (parameter is PlaylistViewModel playlist)
-                return PlaySinglePlaylistAsync(playlist, PlaybackCancelHelper.Token);
+            AlbumViewModel album => PlaySingleAlbumAsync(album, token),
+            ArtistViewModel artist => PlaySingleArtistAsync(artist, token),
+            GenreViewModel genre => PlaySingleGenreAsync(genre, token),
+            PlaylistViewModel playlist => PlaySinglePlaylistAsync(playlist, token),
+            IMediaItem media => PlaySingleItemAsync(media, token),
+            _ => Task.CompletedTask
+        };
 
-            return PlaySingleItemAsync((IMediaItem)parameter, PlaybackCancelHelper.Token);
-        }
-
-        private Task GetPlayFromTask(object parameter)
+        private Task GetPlayFromTask(object parameter, CancellationToken token) => parameter switch
         {
-            if (parameter is IMediaItem item)
-                return PlayFromItemAsync(item, PlaybackCancelHelper.Token);
-            else if (parameter is AlbumViewModel album)
-                return PlayFromAlbumAsync(album, PlaybackCancelHelper.Token);
-            else if (parameter is ArtistViewModel artist)
-                return PlayFromArtistAsync(artist, PlaybackCancelHelper.Token);
-            else if (parameter is GenreViewModel genre)
-                return PlayFromGenreAsync(genre, PlaybackCancelHelper.Token);
-            else if (parameter is PlaylistViewModel playlist)
-                return PlayFromPlaylistAsync(playlist, PlaybackCancelHelper.Token);
+            IMediaItem item => PlayFromItemAsync(item, token),
+            AlbumViewModel album => PlayFromAlbumAsync(album, token),
+            ArtistViewModel artist => PlayFromArtistAsync(artist, token),
+            GenreViewModel genre => PlayFromGenreAsync(genre, token),
+            PlaylistViewModel playlist => PlayFromPlaylistAsync(playlist, token),
+            _ => GetDefaultPlayFromTask(token)
+        };
 
-            return GetDefaultPlayFromTask();
-        }
-
-        private Task GetDefaultPlayFromTask()
+        private Task GetDefaultPlayFromTask(CancellationToken token)
         {
-            var type = Items.First().GetType();
+            var first = Items.FirstOrDefault();
+            if (first == null)
+                return Task.CompletedTask;
+
+            var type = first.GetType();
             if (type == typeof(AlbumViewModel))
-                return PlayFromAlbumAsync(null, PlaybackCancelHelper.Token);
-            else if (type == typeof(ArtistViewModel))
-                return PlayFromArtistAsync(null, PlaybackCancelHelper.Token);
-            else if (type == typeof(GenreViewModel))
-                return PlayFromGenreAsync(null, PlaybackCancelHelper.Token);
-            else if (type == typeof(PlaylistViewModel))
-                return PlayFromPlaylistAsync(null, PlaybackCancelHelper.Token);
+                return PlayFromAlbumAsync(null, token);
+            if (type == typeof(ArtistViewModel))
+                return PlayFromArtistAsync(null, token);
+            if (type == typeof(GenreViewModel))
+                return PlayFromGenreAsync(null, token);
+            if (type == typeof(PlaylistViewModel))
+                return PlayFromPlaylistAsync(null, token);
 
-            return PlayFromItemAsync(null, PlaybackCancelHelper.Token);
+            return PlayFromItemAsync(null, token);
         }
     }
 
@@ -291,11 +280,14 @@ namespace Rise.App.ViewModels
     {
         public Task PlaySingleItemAsync(IMediaItem item, CancellationToken token)
         {
-            return _player.PlaySingleItemAsync(item, token);
+            return item != null ? _player.PlaySingleItemAsync(item, token) : Task.CompletedTask;
         }
 
         public Task PlaySingleAlbumAsync(AlbumViewModel album, CancellationToken token)
         {
+            if (album == null)
+                return Task.CompletedTask;
+
             var filtered = _songs.Where(s => s.Album == album.Title);
             token.ThrowIfCancellationRequested();
 
@@ -307,6 +299,9 @@ namespace Rise.App.ViewModels
 
         public Task PlaySingleArtistAsync(ArtistViewModel artist, CancellationToken token)
         {
+            if (artist == null)
+                return Task.CompletedTask;
+
             string name = artist.Name;
             var filtered = _songs.Where(s => s.Artist == name || s.AlbumArtist == name);
             token.ThrowIfCancellationRequested();
@@ -319,6 +314,9 @@ namespace Rise.App.ViewModels
 
         public Task PlaySingleGenreAsync(GenreViewModel genre, CancellationToken token)
         {
+            if (genre == null)
+                return Task.CompletedTask;
+
             var filtered = _songs.Where(s => s.Genres == genre.Name);
             token.ThrowIfCancellationRequested();
 
@@ -330,6 +328,9 @@ namespace Rise.App.ViewModels
 
         public Task PlaySinglePlaylistAsync(PlaylistViewModel playlist, CancellationToken token)
         {
+            if (playlist == null)
+                return Task.CompletedTask;
+
             var toPlay = playlist.Songs.ToList<IMediaItem>();
             token.ThrowIfCancellationRequested();
 
@@ -343,135 +344,78 @@ namespace Rise.App.ViewModels
     // PlayFrom* methods
     public partial class MediaCollectionViewModel
     {
+        private static void RotateItemsToStart<T>(IList<T> items, T target, CancellationToken token)
+            where T : class
+        {
+            if (target == null)
+                return;
+
+            int index = items.IndexOf(target);
+            token.ThrowIfCancellationRequested();
+
+            if (index > 0)
+            {
+                items.MoveRangeToEnd(0, index - 1);
+                token.ThrowIfCancellationRequested();
+            }
+        }
+
+        private Task PlayFromGroupedItemsAsync<TGroup>(
+            TGroup startItem,
+            Func<TGroup, IEnumerable<IMediaItem>> itemSelector,
+            CancellationToken token)
+            where TGroup : class
+        {
+            var items = Items.CloneList<object, TGroup>();
+            token.ThrowIfCancellationRequested();
+
+            RotateItemsToStart(items, startItem, token);
+
+            var toPlay = new List<IMediaItem>();
+            foreach (var itm in items)
+            {
+                toPlay.AddRange(itemSelector(itm));
+                token.ThrowIfCancellationRequested();
+            }
+
+            return _player.PlayItemsAsync(toPlay, token);
+        }
+
         public Task PlayFromItemAsync(IMediaItem item, CancellationToken token)
         {
             var items = Items.CloneList<object, IMediaItem>();
             token.ThrowIfCancellationRequested();
 
-            if (item != null)
-            {
-                int index = items.IndexOf(item);
-                token.ThrowIfCancellationRequested();
-
-                items.MoveRangeToEnd(0, index - 1);
-                token.ThrowIfCancellationRequested();
-            }
-
+            RotateItemsToStart(items, item, token);
             return _player.PlayItemsAsync(items, token);
         }
 
         public Task PlayFromAlbumAsync(AlbumViewModel album, CancellationToken token)
         {
-            var items = Items.CloneList<object, AlbumViewModel>();
-            var songs = _songs.CloneList<object, SongViewModel>().
-                OrderBy(s => s.Disc).ThenBy(s => s.Track);
-
-            token.ThrowIfCancellationRequested();
-
-            var toPlay = new List<SongViewModel>();
-            token.ThrowIfCancellationRequested();
-
-            if (album != null)
-            {
-                int index = items.IndexOf(album);
-                token.ThrowIfCancellationRequested();
-
-                items.MoveRangeToEnd(0, index - 1);
-                token.ThrowIfCancellationRequested();
-            }
-
-            foreach (var itm in items)
-            {
-                toPlay.AddRange(songs.Where(s => s.Album == itm.Title));
-                token.ThrowIfCancellationRequested();
-            }
-
-            return _player.PlayItemsAsync(toPlay, token);
+            var songs = _songs.CloneList<object, SongViewModel>()
+                .OrderBy(s => s.Disc).ThenBy(s => s.Track).ToList();
+            return PlayFromGroupedItemsAsync(album, itm => songs.Where(s => s.Album == itm.Title), token);
         }
 
         public Task PlayFromArtistAsync(ArtistViewModel artist, CancellationToken token)
         {
-            var items = Items.CloneList<object, ArtistViewModel>();
-            var songs = _songs.CloneList<object, SongViewModel>().OrderBy(s => s.Title);
-
-            token.ThrowIfCancellationRequested();
-
-            var toPlay = new List<SongViewModel>();
-            token.ThrowIfCancellationRequested();
-
-            if (artist != null)
-            {
-                int index = items.IndexOf(artist);
-                token.ThrowIfCancellationRequested();
-
-                items.MoveRangeToEnd(0, index - 1);
-                token.ThrowIfCancellationRequested();
-            }
-
-            foreach (var itm in items)
-            {
-                toPlay.AddRange(songs.Where(s => s.Artist == itm.Name || s.AlbumArtist == itm.Name));
-                token.ThrowIfCancellationRequested();
-            }
-
-            return _player.PlayItemsAsync(toPlay, token);
+            var songs = _songs.CloneList<object, SongViewModel>().OrderBy(s => s.Title).ToList();
+            return PlayFromGroupedItemsAsync(artist, itm => songs.Where(s => s.Artist == itm.Name || s.AlbumArtist == itm.Name), token);
         }
 
         public Task PlayFromGenreAsync(GenreViewModel genre, CancellationToken token)
         {
-            var items = Items.CloneList<object, GenreViewModel>();
-            var songs = _songs.CloneList<object, SongViewModel>().OrderBy(s => s.Title);
-
-            token.ThrowIfCancellationRequested();
-
-            var toPlay = new List<SongViewModel>();
-            token.ThrowIfCancellationRequested();
-
-            if (genre != null)
-            {
-                int index = items.IndexOf(genre);
-                token.ThrowIfCancellationRequested();
-
-                items.MoveRangeToEnd(0, index - 1);
-                token.ThrowIfCancellationRequested();
-            }
-
-            foreach (var itm in items)
-            {
-                toPlay.AddRange(songs.Where(s => s.Genres == itm.Name));
-                token.ThrowIfCancellationRequested();
-            }
-
-            return _player.PlayItemsAsync(toPlay, token);
+            var songs = _songs.CloneList<object, SongViewModel>().OrderBy(s => s.Title).ToList();
+            return PlayFromGroupedItemsAsync(genre, itm => songs.Where(s => s.Genres == itm.Name), token);
         }
 
         public Task PlayFromPlaylistAsync(PlaylistViewModel playlist, CancellationToken token)
         {
-            var items = Items.CloneList<object, PlaylistViewModel>();
-            token.ThrowIfCancellationRequested();
-
-            var toPlay = new List<IMediaItem>();
-            token.ThrowIfCancellationRequested();
-
-            if (playlist != null)
-            {
-                int index = items.IndexOf(playlist);
-                token.ThrowIfCancellationRequested();
-
-                items.MoveRangeToEnd(0, index - 1);
-                token.ThrowIfCancellationRequested();
-            }
-
-            foreach (var itm in items)
-            {
-                toPlay.AddRange(itm.Songs.OrderBy(s => s.Title));
-                token.ThrowIfCancellationRequested();
-
-                toPlay.AddRange(itm.Videos.OrderBy(v => v.Title));
-                token.ThrowIfCancellationRequested();
-            }
-
-            return _player.PlayItemsAsync(toPlay, token);
+            return PlayFromGroupedItemsAsync(
+                playlist,
+                itm => itm.Songs.OrderBy(s => s.Title).Cast<IMediaItem>()
+                    .Concat(itm.Videos.OrderBy(v => v.Title)),
+                token);
         }
     }
 }

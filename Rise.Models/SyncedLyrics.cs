@@ -1,9 +1,6 @@
-﻿using System;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Converters;
-using System.Globalization;
+using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.ComponentModel;
 
 namespace Rise.Models
@@ -73,8 +70,29 @@ namespace Rise.Models
         [JsonProperty("updated_time")]
         public DateTimeOffset UpdatedTime { get; set; }
 
+        private string _cachedSubtitleBody;
+        private IReadOnlyList<SyncedLyricItem> _cachedSubtitles;
+
         [JsonIgnore]
-        public IReadOnlyList<SyncedLyricItem> Subtitles => Array.AsReadOnly(JsonConvert.DeserializeObject<SyncedLyricItem[]>(SubtitleBody));
+        public IReadOnlyList<SyncedLyricItem> Subtitles
+        {
+            get
+            {
+                if (_cachedSubtitles != null && string.Equals(_cachedSubtitleBody, SubtitleBody, StringComparison.Ordinal))
+                    return _cachedSubtitles;
+
+                _cachedSubtitleBody = SubtitleBody;
+                if (string.IsNullOrWhiteSpace(SubtitleBody))
+                {
+                    _cachedSubtitles = Array.Empty<SyncedLyricItem>();
+                    return _cachedSubtitles;
+                }
+
+                var items = JsonConvert.DeserializeObject<SyncedLyricItem[]>(SubtitleBody);
+                _cachedSubtitles = items != null ? Array.AsReadOnly(items) : Array.Empty<SyncedLyricItem>();
+                return _cachedSubtitles;
+            }
+        }
     }
 
     public sealed class SyncedLyricItem : INotifyPropertyChanged
@@ -86,7 +104,7 @@ namespace Rise.Models
         public SyncedLyricTime Time { get; set; }
 
         [JsonIgnore]
-        public TimeSpan TimeSpan => Time.ToTimeSpan();
+        public TimeSpan TimeSpan => Time?.ToTimeSpan() ?? TimeSpan.Zero;
 
         public event PropertyChangedEventHandler PropertyChanged;
 
@@ -97,13 +115,16 @@ namespace Rise.Models
             get => _isSelected;
             set
             {
-                _isSelected = value;
-                PropertyChanged?.Invoke(this, new(nameof(IsSelected)));
+                if (_isSelected != value)
+                {
+                    _isSelected = value;
+                    PropertyChanged?.Invoke(this, new(nameof(IsSelected)));
+                }
             }
         }
 
         public override string ToString()
-            => $"{Text} - {TimeSpan}"; 
+            => $"{Text} - {TimeSpan}";
     }
 
     public sealed class SyncedLyricTime
@@ -122,10 +143,10 @@ namespace Rise.Models
 
         public TimeSpan ToTimeSpan()
         {
-            if (TimeSpan.TryParse($"00:{Minutes}:{Seconds}", out var timeSpan))
-                return timeSpan;
+            if (TotalTime > 0)
+                return TimeSpan.FromSeconds(TotalTime);
 
-            return TimeSpan.Zero;
+            return new TimeSpan(0, 0, Minutes, Seconds, Hundredths * 10);
         }
     }
 
@@ -144,19 +165,6 @@ namespace Rise.Models
     public sealed partial class SyncedLyrics
     {
         public static SyncedLyrics FromJson(string json)
-            => JsonConvert.DeserializeObject<SyncedLyrics>(json, SyncedConverter.Settings);
-    }
-
-    internal static class SyncedConverter
-    {
-        public static readonly JsonSerializerSettings Settings = new()
-        {
-            MetadataPropertyHandling = MetadataPropertyHandling.Ignore,
-            DateParseHandling = DateParseHandling.None,
-            Converters =
-            {
-                new IsoDateTimeConverter { DateTimeStyles = DateTimeStyles.AssumeUniversal }
-            },
-        };
+            => JsonConvert.DeserializeObject<SyncedLyrics>(json, MusixmatchJsonSettings.Default);
     }
 }

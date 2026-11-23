@@ -1,4 +1,4 @@
-﻿using Rise.App.ViewModels;
+using Rise.App.ViewModels;
 using Rise.Common.Extensions;
 using Rise.Data.Json;
 using System;
@@ -68,10 +68,16 @@ namespace Rise.App.Views
             if (!save)
             {
                 var items = await Controller.GetStoredItemsAsync();
-                var item = items.FirstOrDefault(i => i.Id == Playlist.Id);
+                var original = items.FirstOrDefault(i => i.Id == Playlist.Id);
+                if (original != null)
+                {
+                    int index = Controller.Items.IndexOf(Playlist);
+                    if (index >= 0)
+                        Controller.Items[index] = original;
+                }
 
-                Controller.Items.Remove(Playlist);
-                Controller.Items.Add(item);
+                await View.TryConsolidateAsync();
+                return;
             }
 
             await View.TryConsolidateAsync();
@@ -81,6 +87,7 @@ namespace Rise.App.Views
         private async void OnViewConsolidated(ApplicationView sender, ApplicationViewConsolidatedEventArgs args)
         {
             View.Consolidated -= OnViewConsolidated;
+            Controller.Items.CollectionChanged -= OnPlaylistCollectionChanged;
             if (args.IsUserInitiated)
                 await Controller.SaveAsync();
         }

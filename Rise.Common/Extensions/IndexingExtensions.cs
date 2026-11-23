@@ -1,4 +1,4 @@
-﻿using Rise.Common.Constants;
+using Rise.Common.Constants;
 using Rise.Common.Enums;
 using System;
 using System.Collections.Generic;
@@ -84,8 +84,6 @@ namespace Rise.Common.Extensions
                 throw new ArgumentOutOfRangeException(nameof(stepSize));
             }
 
-            int indexedFiles = 0;
-
             // Prepare the query
             StorageFileQueryResult folderQueryResult = folder.CreateFileQueryWithOptions(options);
 
@@ -101,7 +99,6 @@ namespace Rise.Common.Extensions
                 // Process files
                 foreach (StorageFile file in fileList)
                 {
-                    indexedFiles++;
                     yield return file;
                 }
 
@@ -149,7 +146,7 @@ namespace Rise.Common.Extensions
                     case StorageLibraryChangeType.Created:
                         {
                             var item = await change.GetStorageItemAsync();
-                            if (item.IsOfType(StorageItemTypes.File))
+                            if (item != null && item.IsOfType(StorageItemTypes.File))
                             {
                                 var file = (StorageFile)item;
                                 if (!SupportedFileTypes.MediaFiles.Contains(file.FileType.ToLowerInvariant()))
@@ -172,7 +169,7 @@ namespace Rise.Common.Extensions
                     case StorageLibraryChangeType.ContentsReplaced:
                         {
                             var item = await change.GetStorageItemAsync();
-                            if (item.IsOfType(StorageItemTypes.File))
+                            if (item != null && item.IsOfType(StorageItemTypes.File))
                             {
                                 var file = (StorageFile)item;
                                 if (!SupportedFileTypes.MediaFiles.Contains(file.FileType.ToLowerInvariant()))

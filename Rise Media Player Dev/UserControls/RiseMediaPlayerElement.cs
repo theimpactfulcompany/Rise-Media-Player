@@ -1,4 +1,5 @@
-﻿using Rise.Common.Helpers;
+using Rise.Common.Extensions;
+using Rise.Common.Helpers;
 using System;
 using Windows.Foundation;
 using Windows.Media.Playback;
@@ -34,6 +35,8 @@ namespace Rise.App.UserControls
     // Event handlers
     public sealed partial class RiseMediaPlayerElement : MediaPlayerElement
     {
+        private MediaPlayer _subscribedPlayer;
+
         private async void OnVolumeChanged(MediaPlayer sender, object args)
         {
             if (!sender.IsMuted)
@@ -60,7 +63,8 @@ namespace Rise.App.UserControls
 
             return Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
             {
-                _ = VisualStateManager.GoToState(TransportControls, state, true);
+                if (TransportControls != null)
+                    _ = VisualStateManager.GoToState(TransportControls, state, true);
             });
         }
 
@@ -68,50 +72,83 @@ namespace Rise.App.UserControls
         {
             return Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
             {
-                _ = VisualStateManager.GoToState(TransportControls, "NoVolumeState", true);
+                if (TransportControls != null)
+                    _ = VisualStateManager.GoToState(TransportControls, "NoVolumeState", true);
             });
         }
 
-        private IAsyncAction RegisterVolumeChangedAsync()
+        private void UnsubscribePlayer()
         {
-            MediaPlayer.VolumeChanged += OnVolumeChanged;
-            MediaPlayer.IsMutedChanged += OnIsMutedChanged;
+            if (_subscribedPlayer != null)
+            {
+                _subscribedPlayer.VolumeChanged -= OnVolumeChanged;
+                _subscribedPlayer.IsMutedChanged -= OnIsMutedChanged;
+                _subscribedPlayer = null;
+            }
+        }
 
-            return HandleVolumeChangedAsync(MediaPlayer.Volume);
+        private void SubscribePlayer(MediaPlayer player)
+        {
+            if (ReferenceEquals(_subscribedPlayer, player))
+                return;
+
+            UnsubscribePlayer();
+            if (player == null)
+                return;
+
+            _subscribedPlayer = player;
+            player.VolumeChanged += OnVolumeChanged;
+            player.IsMutedChanged += OnIsMutedChanged;
+            _ = HandleVolumeChangedAsync(player.Volume);
         }
     }
 
     // Constructor
     public sealed partial class RiseMediaPlayerElement : MediaPlayerElement
     {
-        private readonly DependencyPropertyWatcher<MediaPlayer> _playerWatcher;
+        private DependencyPropertyWatcher<MediaPlayer> _playerWatcher;
 
         public RiseMediaPlayerElement()
         {
             DefaultStyleKey = typeof(RiseMediaPlayerElement);
 
-            _playerWatcher = new(this, MediaPlayerProperty);
-            _playerWatcher.PropertyChanged += OnMediaPlayerChanged;
-
+            Loaded += OnLoaded;
             Unloaded += OnUnloaded;
         }
 
-        private async void OnMediaPlayerChanged(DependencyPropertyWatcher<MediaPlayer> sender, MediaPlayer newValue)
+        private void OnLoaded(object sender, RoutedEventArgs e)
         {
-            await RegisterVolumeChangedAsync();
-            _playerWatcher.Dispose();
+            if (_playerWatcher == null)
+            {
+                _playerWatcher = new(this, MediaPlayerProperty);
+                _playerWatcher.PropertyChanged += OnMediaPlayerChanged;
+            }
+
+            SubscribePlayer(MediaPlayer);
+        }
+
+        private void OnMediaPlayerChanged(DependencyPropertyWatcher<MediaPlayer> sender, MediaPlayer newValue)
+        {
+            try
+            {
+                SubscribePlayer(newValue);
+            }
+            catch (Exception ex)
+            {
+                ex.WriteToOutput();
+            }
         }
 
         private void OnUnloaded(object sender, RoutedEventArgs e)
         {
-            if (MediaPlayer != null)
-            {
-                MediaPlayer.VolumeChanged -= OnVolumeChanged;
-                MediaPlayer.IsMutedChanged -= OnIsMutedChanged;
-            }
+            UnsubscribePlayer();
 
-            _playerWatcher.PropertyChanged -= OnMediaPlayerChanged;
-            _playerWatcher.Dispose();
+            if (_playerWatcher != null)
+            {
+                _playerWatcher.PropertyChanged -= OnMediaPlayerChanged;
+                _playerWatcher.Dispose();
+                _playerWatcher = null;
+            }
         }
     }
 }

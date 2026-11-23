@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.Serialization;
@@ -65,7 +65,7 @@ namespace Rise.Common.Helpers
 
             // Serialize the session state synchronously to avoid asynchronous access to shared
             // state
-            MemoryStream sessionData = new();
+            using MemoryStream sessionData = new();
             DataContractSerializer serializer = new(typeof(Dictionary<string, object>), _knownTypes);
             serializer.WriteObject(sessionData, _sessionState);
 

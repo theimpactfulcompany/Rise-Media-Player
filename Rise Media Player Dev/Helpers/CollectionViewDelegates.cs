@@ -1,4 +1,4 @@
-﻿using Rise.App.ViewModels;
+using Rise.App.ViewModels;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -17,7 +17,7 @@ namespace Rise.App.Helpers
             { "SongTrack", s => ((SongViewModel)s).Track },
 
             { "SongTitle", s => ((SongViewModel)s).Title },
-            { "SongAlbum", s => ((SongViewModel)s).Disc },
+            { "SongAlbum", s => ((SongViewModel)s).Album },
             { "SongArtist", s => ((SongViewModel)s).Artist },
             { "SongGenres", s => ((SongViewModel)s).Genres },
             { "SongYear", s => ((SongViewModel)s).Year },
@@ -50,9 +50,6 @@ namespace Rise.App.Helpers
 
         public static Func<object, object> GetDelegate(string key)
             => _delegates[key];
-
-        public static bool TryGetDelegate(string key, out Func<object, object> del)
-            => _delegates.TryGetValue(key, out del);
     }
 
     // Grouping delegates
@@ -79,6 +76,9 @@ namespace Rise.App.Helpers
 
         private static string ToGroupHeader(string text)
         {
+            if (string.IsNullOrEmpty(text))
+                return string.Empty;
+
             string key = CharacterGroupings.Lookup(text);
             if (!GroupingLabels.Contains(key))
                 return string.Empty;

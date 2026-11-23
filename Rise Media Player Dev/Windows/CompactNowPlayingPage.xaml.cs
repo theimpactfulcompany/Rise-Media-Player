@@ -1,4 +1,4 @@
-﻿using Rise.Common.Threading;
+using Rise.Common.Threading;
 using Rise.Data.ViewModels;
 using System;
 using System.Threading.Tasks;
@@ -49,10 +49,18 @@ namespace Rise.App.Views
     {
         private async void OnExitButtonClick(object sender, RoutedEventArgs e)
         {
-            _ = await ApplicationView.GetForCurrentView().
-                TryEnterViewModeAsync(ApplicationViewMode.Default);
+            try
+            {
+                _ = await ApplicationView.GetForCurrentView().
+                    TryEnterViewModeAsync(ApplicationViewMode.Default);
 
-            Frame.GoBack();
+                if (Frame.CanGoBack)
+                    Frame.GoBack();
+            }
+            catch (Exception ex)
+            {
+                Rise.Common.Extensions.DiagnosticsExtensions.WriteToOutput(ex);
+            }
         }
 
         private void OnPointerEntered(object sender, PointerRoutedEventArgs e)

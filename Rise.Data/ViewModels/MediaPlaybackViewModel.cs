@@ -43,22 +43,22 @@ namespace Rise.Data.ViewModels
             get => _playingItem;
             private set
             {
-                Set(ref _playingItem, value);
-                PlayingItemChanged?.Invoke(this, _playingItem);
+                if (Set(ref _playingItem, value))
+                    PlayingItemChanged?.Invoke(this, _playingItem);
             }
         }
 
         private NowPlayingDisplayProperties _playingItemProperties;
         /// <summary>
-        /// Gets the media item that is currently playing.
+        /// Gets the display properties of the media item that is currently playing.
         /// </summary>
         public NowPlayingDisplayProperties PlayingItemProperties
         {
             get => _playingItemProperties;
             private set
             {
-                Set(ref _playingItemProperties, value);
-                OnPropertyChanged(nameof(PlayingItemType));
+                if (Set(ref _playingItemProperties, value))
+                    OnPropertyChanged(nameof(PlayingItemType));
             }
         }
 
@@ -170,7 +170,7 @@ namespace Rise.Data.ViewModels
         /// </summary>
         public void ClearEffects()
         {
-            if (_playerCreated)
+            if (_player != null)
                 _player.RemoveAllEffects();
 
             _effects.Clear();
@@ -183,18 +183,14 @@ namespace Rise.Data.ViewModels
         /// <remarks>This method will automatically be canceled if necessary
         /// without throwing <see cref="OperationCanceledException"/>.</remarks>
         public Task PlaySingleItemAsync(IMediaItem item)
-        {
-            return PlayItemsAsync(new IMediaItem[] { item });
-        }
+            => PlayItemsAsync(new IMediaItem[] { item });
 
         /// <summary>
         /// Begins playback of an <see cref="IMediaItem"/>.
         /// </summary>
         /// <param name="item">Item to play.</param>
         public Task PlaySingleItemAsync(IMediaItem item, CancellationToken token)
-        {
-            return PlayItemsAsync(new IMediaItem[] { item }, token);
-        }
+            => PlayItemsAsync(new IMediaItem[] { item }, token);
 
         /// <summary>
         /// Begins playback of a collection of <see cref="IMediaItem"/>.
@@ -202,24 +198,15 @@ namespace Rise.Data.ViewModels
         /// <param name="items">Items to play.</param>
         /// <remarks>This method will automatically be canceled if necessary
         /// without throwing <see cref="OperationCanceledException"/>.</remarks>
-        public async Task PlayItemsAsync(IEnumerable<IMediaItem> items)
-        {
-            try
-            {
-                await PlayItemsAsync(items, CancellationToken.None);
-            }
-            catch (OperationCanceledException) { }
-        }
+        public Task PlayItemsAsync(IEnumerable<IMediaItem> items)
+            => RunIgnoringCancellationAsync(() => PlayItemsAsync(items, CancellationToken.None));
 
         /// <summary>
         /// Begins playback of a collection of <see cref="IMediaItem"/>.
         /// </summary>
         /// <param name="items">Items to play.</param>
-        public async Task PlayItemsAsync(IEnumerable<IMediaItem> items, CancellationToken token)
-        {
-            await PlaybackCancelHelper.CompletePendingAsync(token);
-            await PlaybackCancelHelper.RunAsync(PlayItemsImpl(items, PlaybackCancelHelper.Token));
-        }
+        public Task PlayItemsAsync(IEnumerable<IMediaItem> items, CancellationToken token)
+            => RunCancellablePlaybackAsync(ct => PlayItemsImpl(items, ct), token);
 
         /// <summary>
         /// Begins playback of a collection of <see cref="StorageFile"/>.
@@ -227,55 +214,69 @@ namespace Rise.Data.ViewModels
         /// <param name="files">Files to play.</param>
         /// <remarks>This method will automatically be canceled if necessary
         /// without throwing <see cref="OperationCanceledException"/>.</remarks>
-        public async Task PlayFilesAsync(IEnumerable<StorageFile> files)
-        {
-            try
-            {
-                await PlayFilesAsync(files, CancellationToken.None);
-            }
-            catch (OperationCanceledException) { }
-        }
+        public Task PlayFilesAsync(IEnumerable<StorageFile> files)
+            => RunIgnoringCancellationAsync(() => PlayFilesAsync(files, CancellationToken.None));
 
         /// <summary>
         /// Begins playback of a collection of <see cref="StorageFile"/>.
         /// </summary>
         /// <param name="files">Files to play.</param>
-        public async Task PlayFilesAsync(IEnumerable<StorageFile> files, CancellationToken token)
+        public Task PlayFilesAsync(IEnumerable<StorageFile> files, CancellationToken token)
+            => RunCancellablePlaybackAsync(ct => PlayFilesImpl(files, ct), token);
+
+        private async Task RunCancellablePlaybackAsync(Func<CancellationToken, Task> action, CancellationToken token)
         {
             await PlaybackCancelHelper.CompletePendingAsync(token);
-            await PlaybackCancelHelper.RunAsync(PlayFilesImpl(files, PlaybackCancelHelper.Token));
+            await PlaybackCancelHelper.RunAsync(action(PlaybackCancelHelper.Token));
+        }
+
+        private static async Task RunIgnoringCancellationAsync(Func<Task> action)
+        {
+            try
+            {
+                await action();
+            }
+            catch (OperationCanceledException) { }
         }
 
         private async Task PlayItemsImpl(IEnumerable<IMediaItem> items, CancellationToken token)
         {
             ResetPlayback();
 
-            int i = 0;
+            if (items == null)
+                return;
+
+            bool started = false;
             foreach (var item in items)
             {
                 token.ThrowIfCancellationRequested();
+                if (item == null)
+                    continue;
 
                 var playItem = await item.AsPlaybackItemAsync();
                 PlaybackList.Items.Add(playItem);
 
-                // Start playback right after adding the first item...
-                if (i == 0)
+                if (!started)
                 {
                     token.ThrowIfCancellationRequested();
                     Player.Play();
-
-                    // ...and never again.
-                    i++;
+                    started = true;
                 }
             }
         }
 
         private async Task PlayFilesImpl(IEnumerable<StorageFile> files, CancellationToken token)
         {
-            int i = 0;
+            if (files == null)
+                return;
+
+            bool started = false;
             foreach (var file in files)
             {
                 token.ThrowIfCancellationRequested();
+                if (file == null)
+                    continue;
+
                 string extension = file.FileType;
 
                 MediaPlaybackItem itm = null;
@@ -287,19 +288,17 @@ namespace Rise.Data.ViewModels
                 token.ThrowIfCancellationRequested();
                 if (itm != null)
                 {
-                    // Start playback right after adding the first item...
-                    if (i == 0)
+                    if (!started)
                     {
-                        token.ThrowIfCancellationRequested();
-
                         ResetPlayback();
+                        PlaybackList.Items.Add(itm);
                         Player.Play();
-
-                        // ...and never again.
-                        i++;
+                        started = true;
                     }
-
-                    PlaybackList.Items.Add(itm);
+                    else
+                    {
+                        PlaybackList.Items.Add(itm);
+                    }
                 }
             }
         }
@@ -350,6 +349,7 @@ namespace Rise.Data.ViewModels
         private void ResetPlayback()
         {
             PlaybackList.Items.Clear();
+            PlayingItemProperties = null;
             PlayingItem = null;
         }
 
@@ -362,43 +362,53 @@ namespace Rise.Data.ViewModels
             }
 
             var itm = args.NewItem;
-            if (itm != null)
-            {
-                PlayingItemProperties = NowPlayingDisplayProperties.GetFromPlaybackItem(itm);
-                PlayingItem = itm;
-            }
+            PlayingItemProperties = NowPlayingDisplayProperties.GetFromPlaybackItem(itm);
+            PlayingItem = itm;
         }
 
         private void OnItemsVectorChanged(IObservableVector<MediaPlaybackItem> sender, IVectorChangedEventArgs args)
         {
-            int index = (int)args.Index;
-            switch (args.CollectionChange)
+            void ApplyChange()
             {
-                case CollectionChange.ItemInserted:
-                    var itm = sender[index];
-                    QueuedItems.Insert(index, itm);
-                    break;
+                int index = (int)args.Index;
+                switch (args.CollectionChange)
+                {
+                    case CollectionChange.ItemInserted:
+                        if (index >= 0 && index < sender.Count)
+                            QueuedItems.Insert(Math.Min(index, QueuedItems.Count), sender[index]);
+                        break;
 
-                case CollectionChange.ItemRemoved:
-                    QueuedItems.RemoveAt(index);
-                    break;
+                    case CollectionChange.ItemRemoved:
+                        if (index >= 0 && index < QueuedItems.Count)
+                            QueuedItems.RemoveAt(index);
+                        break;
 
-                case CollectionChange.ItemChanged:
-                    QueuedItems[index] = sender[index];
-                    break;
+                    case CollectionChange.ItemChanged:
+                        if (index >= 0 && index < sender.Count && index < QueuedItems.Count)
+                            QueuedItems[index] = sender[index];
+                        break;
 
-                case CollectionChange.Reset:
-                    QueuedItems.Clear();
-                    break;
+                    case CollectionChange.Reset:
+                        QueuedItems.Clear();
+                        break;
+                }
             }
+
+            if (_uiContext != null && _uiContext != SynchronizationContext.Current)
+                _uiContext.Post(_ => ApplyChange(), null);
+            else
+                ApplyChange();
         }
     }
 
     // Constructors, Initializers
     public partial class MediaPlaybackViewModel
     {
+        private readonly SynchronizationContext _uiContext;
+
         public MediaPlaybackViewModel()
         {
+            _uiContext = SynchronizationContext.Current;
             PlaybackList.CurrentItemChanged += OnCurrentItemChanged;
             PlaybackList.Items.VectorChanged += OnItemsVectorChanged;
         }

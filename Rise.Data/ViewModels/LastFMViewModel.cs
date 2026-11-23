@@ -1,8 +1,7 @@
-﻿using Rise.Common.Constants;
+using Rise.Common.Constants;
 using Rise.Common.Extensions;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -19,6 +18,7 @@ namespace Rise.Data.ViewModels
     {
         private readonly string _key;
         private readonly string _secret;
+        private string _vaultResource;
 
         /// <summary>
         /// Initializes a new instance of this class with the provided
@@ -34,7 +34,7 @@ namespace Rise.Data.ViewModels
 
         private bool _authenticated = false;
         /// <summary>
-        /// WHether the user has been authenticated.
+        /// Whether the user has been authenticated.
         /// </summary>
         public bool Authenticated
         {
@@ -64,14 +64,17 @@ namespace Rise.Data.ViewModels
         /// false otherwise.</returns>
         public async Task<bool> TryAuthenticateAsync()
         {
-            var token = await GetTokenAsync();
-            var uriBuilder = new StringBuilder();
-            _ = uriBuilder.Append("https://www.last.fm/api/auth?api_key=");
-            _ = uriBuilder.Append(_key);
-            _ = uriBuilder.Append("&token=");
-            _ = uriBuilder.Append(token);
-            _ = uriBuilder.Append("&redirect_uri=");
-            _ = uriBuilder.Append(Uri.EscapeDataString("https://www.google.com"));
+            string token = await GetTokenAsync();
+            if (string.IsNullOrEmpty(token))
+                return false;
+
+            var uriBuilder = new StringBuilder()
+                .Append("https://www.last.fm/api/auth?api_key=")
+                .Append(Uri.EscapeDataString(_key))
+                .Append("&token=")
+                .Append(Uri.EscapeDataString(token))
+                .Append("&redirect_uri=")
+                .Append(Uri.EscapeDataString("https://www.google.com"));
 
             var startUri = new Uri(uriBuilder.ToString());
             Dictionary<string, string> args = new()
@@ -95,7 +98,7 @@ namespace Rise.Data.ViewModels
                 return false;
             }
 
-            if (result.ResponseStatus == WebAuthenticationStatus.ErrorHttp)
+            if (result.ResponseStatus != WebAuthenticationStatus.Success)
                 return false;
 
             string response;
@@ -103,7 +106,11 @@ namespace Rise.Data.ViewModels
             {
                 try
                 {
-                    response = await client.GetStringAsync(endUri);
+                    var httpResponse = await client.GetAsync(endUri);
+                    if (!httpResponse.IsSuccessStatusCode)
+                        return false;
+
+                    response = await httpResponse.Content.ReadAsStringAsync();
                 }
                 catch (Exception)
                 {
@@ -111,12 +118,16 @@ namespace Rise.Data.ViewModels
                 }
             }
 
-            var doc = new XmlDocument();
-            doc.LoadXml(response);
+            if (!TryLoadXml(response, out var doc))
+                return false;
 
-            this._sessionKey = GetNodeFromResponse(doc, "/lfm/session/key");
-            this.Username = GetNodeFromResponse(doc, "/lfm/session/name");
+            string sessionKey = GetNodeFromResponse(doc, "/lfm/session/key");
+            string username = GetNodeFromResponse(doc, "/lfm/session/name");
+            if (string.IsNullOrEmpty(sessionKey) || string.IsNullOrEmpty(username))
+                return false;
 
+            _sessionKey = sessionKey;
+            Username = username;
             Authenticated = true;
             return true;
         }
@@ -126,9 +137,12 @@ namespace Rise.Data.ViewModels
         /// </summary>
         public void SaveCredentialsToVault(string resource)
         {
-            if (!_authenticated) return;
+            if (!_authenticated || string.IsNullOrEmpty(resource))
+                return;
 
-            PasswordVault vault = new();
+            _vaultResource = resource;
+            var vault = new PasswordVault();
+            RemoveCredentialsForResource(vault, resource);
             vault.Add(new PasswordCredential(resource, Username, _sessionKey));
         }
 
@@ -141,10 +155,10 @@ namespace Rise.Data.ViewModels
         {
             try
             {
-                PasswordVault vault = new();
-                var credentials = vault.RetrieveAll().Where(p => p.Resource == resource);
-
-                foreach (var credential in credentials)
+                _vaultResource = resource;
+                var vault = new PasswordVault();
+                var credential = vault.RetrieveAll().LastOrDefault(p => p.Resource == resource);
+                if (credential != null)
                 {
                     credential.RetrievePassword();
                     Username = credential.UserName;
@@ -167,16 +181,14 @@ namespace Rise.Data.ViewModels
         /// false otherwise.</returns>
         public async Task<bool> TryScrobbleItemAsync(MediaPlaybackItem item)
         {
-            if (!_authenticated) return false;
+            if (!_authenticated || item == null)
+                return false;
 
-            if (item == null) return false;
-
-            var span = DateTime.UtcNow - new DateTime(1970, 1, 1);
-            var curr = ((int)span.TotalSeconds).ToString();
+            string curr = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
 
             var props = item.GetDisplayProperties().MusicProperties;
-            string title = props.Title;
-            string artist = props.Artist;
+            string title = props.Title ?? string.Empty;
+            string artist = props.Artist ?? string.Empty;
 
             Dictionary<string, string> parameters = new()
             {
@@ -188,68 +200,64 @@ namespace Rise.Data.ViewModels
                 { "sk", _sessionKey }
             };
 
-            string signature = GetSignature(parameters);
-
-            var comboBuilder = new StringBuilder();
-            comboBuilder.Append("https://ws.audioscrobbler.com/2.0/?method=track.scrobble&api_key=");
-            comboBuilder.Append(_key);
-            comboBuilder.Append("&artist[0]=");
-            comboBuilder.Append(artist);
-            comboBuilder.Append("&track[0]=");
-            comboBuilder.Append(title);
-            comboBuilder.Append("&sk=");
-            comboBuilder.Append(_sessionKey);
-            comboBuilder.Append("&timestamp[0]=");
-            comboBuilder.Append(curr);
-            comboBuilder.Append("&api_sig=");
-            comboBuilder.Append(signature);
-
-            var uri = new Uri(comboBuilder.ToString());
-            var content = new HttpStringContent("");
-            using (var client = new HttpClient())
+            var uri = GetSignedUri(parameters);
+            using var content = new HttpStringContent(string.Empty);
+            using var client = new HttpClient();
+            try
             {
-                try
-                {
-                    _ = await client.PostAsync(uri, content);
-                    return true;
-                }
-                catch (Exception)
-                {
-                    return false;
-                }
-                finally
-                {
-                    content.Dispose();
-                }
+                var response = await client.PostAsync(uri, content);
+                return response.IsSuccessStatusCode;
+            }
+            catch (Exception)
+            {
+                return false;
             }
         }
 
         /// <summary>
         /// Logs out of the current session, clearing
-        /// the username and session key.
+        /// the username, session key, and any cached vault credentials.
         /// </summary>
         public void LogOut()
         {
             Authenticated = false;
-
             Username = null;
             _sessionKey = null;
+
+            if (!string.IsNullOrEmpty(_vaultResource))
+            {
+                try
+                {
+                    RemoveCredentialsForResource(new PasswordVault(), _vaultResource);
+                }
+                catch (Exception) { }
+            }
         }
     }
 
     // Private methods
     public partial class LastFMViewModel
     {
+        private static void RemoveCredentialsForResource(PasswordVault vault, string resource)
+        {
+            foreach (var existing in vault.RetrieveAll().Where(p => p.Resource == resource).ToList())
+                vault.Remove(existing);
+        }
+
         private async Task<string> GetTokenAsync()
         {
-            string m_strFilePath = URLs.LastFM + "auth.gettoken&api_key=" + _key;
+            string url = $"{URLs.LastFM}auth.gettoken&api_key={Uri.EscapeDataString(_key)}";
 
             string response;
             using (var client = new HttpClient())
             {
                 try
                 {
-                    response = await client.GetStringAsync(new Uri(m_strFilePath));
+                    var httpResponse = await client.GetAsync(new Uri(url));
+                    if (!httpResponse.IsSuccessStatusCode)
+                        return null;
+
+                    response = await httpResponse.Content.ReadAsStringAsync();
                 }
                 catch (Exception)
                 {
@@ -257,21 +265,27 @@ namespace Rise.Data.ViewModels
                 }
             }
 
-            var doc = new XmlDocument();
-            doc.LoadXml(response);
-            return GetNodeFromResponse(doc, "/lfm/token");
+            return TryLoadXml(response, out var doc)
+                ? GetNodeFromResponse(doc, "/lfm/token")
+                : null;
         }
 
         private Uri GetSignedUri(Dictionary<string, string> args)
         {
-            StringBuilder stringBuilder = new();
-            _ = stringBuilder.Append("https://ws.audioscrobbler.com/2.0/?");
+            var stringBuilder = new StringBuilder("https://ws.audioscrobbler.com/2.0/?");
 
             foreach (var kvp in args)
-                _ = stringBuilder.AppendFormat("{0}={1}&", kvp.Key, kvp.Value);
+            {
+                _ = stringBuilder
+                    .Append(Uri.EscapeDataString(kvp.Key))
+                    .Append('=')
+                    .Append(Uri.EscapeDataString(kvp.Value ?? string.Empty))
+                    .Append('&');
+            }
 
-            _ = stringBuilder.Append("api_sig=");
-            _ = stringBuilder.Append(SignCall(args));
+            _ = stringBuilder
+                .Append("api_sig=")
+                .Append(GetSignature(args));
 
             return new Uri(stringBuilder.ToString());
         }
@@ -279,8 +293,7 @@ namespace Rise.Data.ViewModels
         private string GetSignature(Dictionary<string, string> parameters)
         {
             var resultBuilder = new StringBuilder();
-            var data = parameters.OrderBy(x => x.Key);
-            foreach (var kvp in data)
+            foreach (var kvp in parameters.OrderBy(x => x.Key, StringComparer.Ordinal))
             {
                 _ = resultBuilder.Append(kvp.Key);
                 _ = resultBuilder.Append(kvp.Value);
@@ -290,21 +303,26 @@ namespace Rise.Data.ViewModels
             return resultBuilder.ToString().GetEncodedHash("MD5");
         }
 
-        private string SignCall(Dictionary<string, string> args)
+        private static bool TryLoadXml(string xml, out XmlDocument doc)
         {
-            var sortedArgs = args.OrderBy(arg => arg.Key);
+            doc = null;
+            if (string.IsNullOrWhiteSpace(xml))
+                return false;
 
-            string signature = sortedArgs.Select(pair => pair.Key + pair.Value).
-                Aggregate((first, second) => first + second);
-            signature += _secret;
-
-            return signature.GetEncodedHash("MD5");
+            try
+            {
+                doc = new XmlDocument();
+                doc.LoadXml(xml);
+                return true;
+            }
+            catch (XmlException)
+            {
+                doc = null;
+                return false;
+            }
         }
 
-        private string GetNodeFromResponse(XmlDocument doc, string node)
-        {
-            var selected = doc.DocumentElement.SelectSingleNode(node);
-            return selected.InnerText;
-        }
+        private static string GetNodeFromResponse(XmlDocument doc, string node)
+            => doc?.DocumentElement?.SelectSingleNode(node)?.InnerText;
     }
 }

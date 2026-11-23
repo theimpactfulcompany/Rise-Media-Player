@@ -1,11 +1,7 @@
-﻿using Newtonsoft.Json;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using System;
-using System.Collections.Generic;
 using System.Globalization;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Rise.Models
 {
@@ -128,17 +124,13 @@ namespace Rise.Models
 
     public sealed partial class MusixmatchLyrics
     {
-        public static MusixmatchLyrics FromJson(string json) => JsonConvert.DeserializeObject<MusixmatchLyrics>(json, Converter.Settings);
+        public static MusixmatchLyrics FromJson(string json)
+            => JsonConvert.DeserializeObject<MusixmatchLyrics>(json, MusixmatchJsonSettings.Default);
     }
 
-    public static class Serialize
+    internal static class MusixmatchJsonSettings
     {
-        public static string ToJson(this MusixmatchLyrics self) => JsonConvert.SerializeObject(self, Converter.Settings);
-    }
-
-    internal static class Converter
-    {
-        public static readonly JsonSerializerSettings Settings = new JsonSerializerSettings
+        public static readonly JsonSerializerSettings Default = new()
         {
             MetadataPropertyHandling = MetadataPropertyHandling.Ignore,
             DateParseHandling = DateParseHandling.None,

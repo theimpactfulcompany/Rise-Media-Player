@@ -1,12 +1,17 @@
-﻿using Windows.UI.Core;
+using Windows.System;
+using Windows.UI.Core;
 
 namespace Rise.Common.Helpers
 {
-    public class KeyboardHelpers
+    public static class KeyboardHelpers
     {
         public static bool IsCtrlPressed()
         {
-            CoreVirtualKeyStates state = CoreWindow.GetForCurrentThread().GetKeyState(Windows.System.VirtualKey.Control);
+            var window = CoreWindow.GetForCurrentThread();
+            if (window == null)
+                return false;
+
+            CoreVirtualKeyStates state = window.GetKeyState(VirtualKey.Control);
             return (state & CoreVirtualKeyStates.Down) == CoreVirtualKeyStates.Down;
         }
     }

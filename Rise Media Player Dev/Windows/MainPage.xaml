@@ -1,4 +1,4 @@
-﻿<Page
+<Page
     x:Class="Rise.App.Views.MainPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -546,6 +546,7 @@
                                 RelativePanel.AlignHorizontalCenterWithPanel="True"
                                 RelativePanel.AlignVerticalCenterWithPanel="True">
                                 <muxc:ProgressRing
+                                    x:Name="IndexingProgressRing"
                                     Width="18"
                                     Height="18"
                                     IsActive="True" />
@@ -617,6 +618,7 @@
                                 RelativePanel.AlignHorizontalCenterWithPanel="True"
                                 RelativePanel.AlignVerticalCenterWithPanel="True">
                                 <muxc:ProgressRing
+                                    x:Name="FetchingMetadataProgressRing"
                                     Width="18"
                                     Height="18"
                                     IsActive="True" />
@@ -1023,6 +1025,7 @@
             </VisualStateGroup>
 
             <VisualStateGroup x:Name="ScanningStates">
+                <VisualState x:Name="NotScanningState" />
                 <VisualState x:Name="ScanningState">
                     <VisualState.Setters>
                         <Setter Target="IndexingTip.Visibility" Value="Visible" />

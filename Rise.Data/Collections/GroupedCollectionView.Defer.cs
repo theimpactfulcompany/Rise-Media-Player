@@ -1,4 +1,4 @@
-﻿using Windows.Foundation;
+using Windows.Foundation;
 
 namespace Rise.Data.Collections;
 
@@ -22,6 +22,9 @@ public sealed partial class GroupedCollectionView
 
     private void OnDeferralCompleted()
     {
+        if (_deferCounter == 0)
+            return;
+
         _deferCounter--;
         if (_deferCounter == 0)
             OnSourceChanged();

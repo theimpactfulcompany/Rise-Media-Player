@@ -1,23 +1,27 @@
-﻿using Rise.Common;
 using Rise.Common.Extensions.Markup;
 using Rise.Data.ViewModels;
 using Rise.Models;
 using System;
-using System.Linq;
-using System.Threading.Tasks;
 
 namespace Rise.App.ViewModels
 {
     public sealed class ArtistViewModel : ViewModel<Artist>
     {
+        private readonly Func<string, int> _songCounter;
+        private readonly Func<string, int> _albumCounter;
 
         #region Constructor
         /// <summary>
         /// Initializes a new instance of the ArtistViewModel class that wraps an Artist object.
         /// </summary>
-        public ArtistViewModel(Artist model = null)
+        public ArtistViewModel(
+            Artist model = null,
+            Func<string, int> songCounter = null,
+            Func<string, int> albumCounter = null)
         {
             Model = model ?? new Artist();
+            _songCounter = songCounter;
+            _albumCounter = albumCounter;
         }
         #endregion
 
@@ -63,7 +67,7 @@ namespace Rise.App.ViewModels
         /// Gets the artist's song count.
         /// </summary>
         public int SongCount
-            => App.MViewModel.Songs.Count(s => s.Model.Artist == Model.Name);
+            => _songCounter?.Invoke(Model.Name) ?? 0;
         public string LocalizedSongCount
             => ResourceHelper.GetLocalizedCount("Song", SongCount);
 
@@ -71,34 +75,12 @@ namespace Rise.App.ViewModels
         /// Gets the artist's album count.
         /// </summary>
         public int AlbumCount
-            => App.MViewModel.Albums.Count(a => a.Model.Artist == Model.Name);
+            => _albumCounter?.Invoke(Model.Name) ?? 0;
         public string LocalizedAlbumCount
             => ResourceHelper.GetLocalizedCount("Album", AlbumCount);
 
         public string LocalizedSongsAndAlbums
             => $"{LocalizedSongCount}, {LocalizedAlbumCount}";
-        #endregion
-
-        #region Backend
-        /// <summary>
-        /// Saves item data to the backend.
-        /// </summary>
-        public async Task SaveAsync(bool queue = false)
-        {
-            if (!App.MViewModel.Artists.Contains(this))
-            {
-                App.MViewModel.Artists.Add(this);
-            }
-
-            if (queue)
-            {
-                NewRepository.Repository.QueueUpsert(Model);
-            }
-            else
-            {
-                await NewRepository.Repository.UpsertAsync(Model);
-            }
-        }
         #endregion
     }
 }

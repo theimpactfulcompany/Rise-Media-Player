@@ -1,5 +1,5 @@
-﻿using System;
 using Rise.Models;
+using System;
 using System.Threading.Tasks;
 using Windows.Web.Http;
 
@@ -8,12 +8,15 @@ namespace Rise.App.Helpers
     // Thanks to @ahmed605 (https://github.com/ahmed605) for the Musixmatch code contribution.
     public static class MusixmatchHelper
     {
+        private const string BaseUrl = "https://apic-desktop.musixmatch.com/ws/1.1/";
+        private const string DefaultUserToken = "2306258e8a658a197b52f987c6f83479b4cce70202a27357e58b68";
+        private static readonly HttpClient _httpClient = new();
+
         private static async Task<string> GetStringAsync(Uri url)
         {
-            using HttpClient httpClient = new();
             try
             {
-                using var response = await httpClient.GetAsync(url);
+                using var response = await _httpClient.GetAsync(url);
                 _ = response.EnsureSuccessStatusCode();
 
                 return await response.Content.ReadAsStringAsync();
@@ -24,128 +27,90 @@ namespace Rise.App.Helpers
             }
         }
 
+        private static async Task<T> FetchAsync<T>(string relativeQuery, Func<string, T> parser)
+            where T : class
+        {
+            string response = await GetStringAsync(new Uri(BaseUrl + relativeQuery));
+            return !string.IsNullOrWhiteSpace(response) ? parser(response) : null;
+        }
+
         private static string GetUserToken(UserToken token)
         {
-            if (token != null)
-            {
-                var message = token.Message;
-                string userToken = message.Body.Token;
+            var message = token?.Message;
+            string userToken = message?.Body?.Token;
 
-                if (message.Header.StatusCode == 200 && !string.IsNullOrEmpty(userToken))
-                    return userToken;
-            }
+            if (message?.Header?.StatusCode == 200 && !string.IsNullOrEmpty(userToken))
+                return userToken;
 
-            return "2306258e8a658a197b52f987c6f83479b4cce70202a27357e58b68";
+            return DefaultUserToken;
         }
 
-        public static async Task<MusixmatchLyrics> GetLyricsAsync(string trackName, string artistName, UserToken token = null)
+        private static string BuildMatcherQuery(string endpoint, string trackName, string artistName, int? duration, string subtitleFormat, UserToken token)
         {
-            string userToken = GetUserToken(token);
-            Uri url = new($@"https://apic-desktop.musixmatch.com/ws/1.1/matcher.lyrics.get?format=json&q_track={Uri.EscapeDataString(trackName)}&q_artist={Uri.EscapeDataString(artistName)}&user_language=en&subtitle_format=lrc&app_id=web-desktop-app-v1.0&usertoken={userToken}");
+            string userToken = Uri.EscapeDataString(GetUserToken(token));
+            string track = Uri.EscapeDataString(trackName ?? string.Empty);
+            string artist = Uri.EscapeDataString(artistName ?? string.Empty);
+            string durationPart = duration.HasValue ? $"&q_duration={duration.Value}" : string.Empty;
 
-            string response = await GetStringAsync(url);
-            if (!string.IsNullOrWhiteSpace(response))
-                return MusixmatchLyrics.FromJson(response);
-
-            return null;
+            return $"{endpoint}?format=json&q_track={track}&q_artist={artist}{durationPart}&user_language=en&subtitle_format={subtitleFormat}&app_id=web-desktop-app-v1.0&usertoken={userToken}";
         }
 
-        // Duration is in seconds
-        public static async Task<MusixmatchLyrics> GetLyricsAsync(string trackName, string artistName, int duration, UserToken token = null)
+        private static string BuildTrackIdQuery(string endpoint, string id, string subtitleFormat, UserToken token)
         {
-            string userToken = GetUserToken(token);
-            Uri url = new($@"https://apic-desktop.musixmatch.com/ws/1.1/matcher.lyrics.get?format=json&q_track={Uri.EscapeDataString(trackName)}&q_artist={Uri.EscapeDataString(artistName)}&q_duration={duration}&user_language=en&subtitle_format=mxm&app_id=web-desktop-app-v1.0&usertoken={userToken}");
+            string userToken = Uri.EscapeDataString(GetUserToken(token));
+            string escapedId = Uri.EscapeDataString(id ?? string.Empty);
 
-            string response = await GetStringAsync(url);
-            if (!string.IsNullOrWhiteSpace(response))
-                return MusixmatchLyrics.FromJson(response);
-
-            return null;
+            return $"{endpoint}?format=json&track_id={escapedId}&user_language=en&subtitle_format={subtitleFormat}&app_id=web-desktop-app-v1.0&usertoken={userToken}";
         }
 
-        public static async Task<MusixmatchLyrics> GetLyricsAsync(string id, UserToken token = null)
+        public static Task<MusixmatchLyrics> GetLyricsAsync(string trackName, string artistName, UserToken token = null)
         {
-            string userToken = GetUserToken(token);
-            Uri url = new($@"https://apic-desktop.musixmatch.com/ws/1.1/track.lyrics.get?format=json&track_id={id}&user_language=en&subtitle_format=mxm&app_id=web-desktop-app-v1.0&usertoken={userToken}");
+            if (string.IsNullOrWhiteSpace(trackName) || string.IsNullOrWhiteSpace(artistName))
+                return Task.FromResult<MusixmatchLyrics>(null);
 
-            string response = await GetStringAsync(url);
-            if (!string.IsNullOrWhiteSpace(response))
-                return MusixmatchLyrics.FromJson(response);
-
-            return null;
-        }
-
-        public static async Task<SyncedLyrics> GetSyncedLyricsAsync(string trackName, string artistName, UserToken token = null)
-        {
-            string userToken = GetUserToken(token);
-            Uri url = new($@"https://apic-desktop.musixmatch.com/ws/1.1/matcher.subtitle.get?format=json&q_track={Uri.EscapeDataString(trackName)}&q_artist={Uri.EscapeDataString(artistName)}&user_language=en&subtitle_format=mxm&app_id=web-desktop-app-v1.0&usertoken={userToken}");
-
-            string response = await GetStringAsync(url);
-            if (!string.IsNullOrWhiteSpace(response))
-                return SyncedLyrics.FromJson(response);
-
-            return null;
+            return FetchAsync(BuildMatcherQuery("matcher.lyrics.get", trackName, artistName, null, "lrc", token), MusixmatchLyrics.FromJson);
         }
 
         // Duration is in seconds
-        public static async Task<SyncedLyrics> GetSyncedLyricsAsync(string trackName, string artistName, int duration, UserToken token = null)
+        public static Task<MusixmatchLyrics> GetLyricsAsync(string trackName, string artistName, int duration, UserToken token = null)
         {
-            string userToken = GetUserToken(token);
-            Uri url = new($@"https://apic-desktop.musixmatch.com/ws/1.1/matcher.subtitle.get?format=json&q_track={Uri.EscapeDataString(trackName)}&q_artist={Uri.EscapeDataString(artistName)}&q_duration={duration}&user_language=en&subtitle_format=mxm&app_id=web-desktop-app-v1.0&usertoken={userToken}");
+            if (string.IsNullOrWhiteSpace(trackName) || string.IsNullOrWhiteSpace(artistName))
+                return Task.FromResult<MusixmatchLyrics>(null);
 
-            string response = await GetStringAsync(url);
-            if (!string.IsNullOrWhiteSpace(response))
-                return SyncedLyrics.FromJson(response);
-
-            return null;
+            return FetchAsync(BuildMatcherQuery("matcher.lyrics.get", trackName, artistName, duration, "mxm", token), MusixmatchLyrics.FromJson);
         }
 
-        public static async Task<SyncedLyrics> GetSyncedLyricsAsync(string id, UserToken token = null)
+        public static Task<MusixmatchLyrics> GetLyricsAsync(string id, UserToken token = null)
         {
-            string userToken = GetUserToken(token);
-            Uri url = new($@"https://apic-desktop.musixmatch.com/ws/1.1/track.subtitle.get?format=json&track_id={id}&user_language=en&subtitle_format=mxm&app_id=web-desktop-app-v1.0&usertoken={userToken}");
+            if (string.IsNullOrWhiteSpace(id))
+                return Task.FromResult<MusixmatchLyrics>(null);
 
-            string response = await GetStringAsync(url);
-            if (!string.IsNullOrWhiteSpace(response))
-                return SyncedLyrics.FromJson(response);
-
-            return null;
+            return FetchAsync(BuildTrackIdQuery("track.lyrics.get", id, "mxm", token), MusixmatchLyrics.FromJson);
         }
 
-        public static async Task<MusixmatchTrack> GetTrackAsync(string trackName, string artistName, UserToken token = null)
+        public static Task<SyncedLyrics> GetSyncedLyricsAsync(string trackName, string artistName, UserToken token = null)
         {
-            string userToken = GetUserToken(token);
-            Uri url = new($@"https://apic-desktop.musixmatch.com/ws/1.1/matcher.track.get?format=json&q_track={Uri.EscapeDataString(trackName)}&q_artist={Uri.EscapeDataString(artistName)}&user_language=en&subtitle_format=mxm&app_id=web-desktop-app-v1.0&usertoken={userToken}");
+            if (string.IsNullOrWhiteSpace(trackName) || string.IsNullOrWhiteSpace(artistName))
+                return Task.FromResult<SyncedLyrics>(null);
 
-            string response = await GetStringAsync(url);
-            if (!string.IsNullOrWhiteSpace(response))
-                return MusixmatchTrack.FromJson(response);
-
-            return null;
+            return FetchAsync(BuildMatcherQuery("matcher.subtitle.get", trackName, artistName, null, "mxm", token), SyncedLyrics.FromJson);
         }
 
         // Duration is in seconds
-        public static async Task<MusixmatchTrack> GetTrackAsync(string trackName, string artistName, int duration, UserToken token = null)
+        public static Task<SyncedLyrics> GetSyncedLyricsAsync(string trackName, string artistName, int duration, UserToken token = null)
         {
-            string userToken = GetUserToken(token);
-            Uri url = new($@"https://apic-desktop.musixmatch.com/ws/1.1/matcher.track.get?format=json&q_track={Uri.EscapeDataString(trackName)}&q_artist={Uri.EscapeDataString(artistName)}&q_duration={duration}&user_language=en&subtitle_format=mxm&app_id=web-desktop-app-v1.0&usertoken={userToken}");
+            if (string.IsNullOrWhiteSpace(trackName) || string.IsNullOrWhiteSpace(artistName))
+                return Task.FromResult<SyncedLyrics>(null);
 
-            string response = await GetStringAsync(url);
-            if (!string.IsNullOrWhiteSpace(response))
-                return MusixmatchTrack.FromJson(response);
-
-            return null;
+            return FetchAsync(BuildMatcherQuery("matcher.subtitle.get", trackName, artistName, duration, "mxm", token), SyncedLyrics.FromJson);
         }
 
-        public static async Task<UserToken> GetUserTokenAsync()
+        public static Task<SyncedLyrics> GetSyncedLyricsAsync(string id, UserToken token = null)
         {
-            Uri url = new(@"https://apic.musixmatch.com/ws/1.1/token.get?app_id=community-app-v1.0&guid=56495545-24fd-4a2f-95dc-947a250c4550&signature=NlaOMebAhGJEjN0zRTwyD%2FSspUo%3D&signature_protocol=sha1");
+            if (string.IsNullOrWhiteSpace(id))
+                return Task.FromResult<SyncedLyrics>(null);
 
-            string response = await GetStringAsync(url);
-            if (!string.IsNullOrEmpty(response))
-                return UserToken.FromJson(response);
-
-            return null;
+            return FetchAsync(BuildTrackIdQuery("track.subtitle.get", id, "mxm", token), SyncedLyrics.FromJson);
         }
     }
 }

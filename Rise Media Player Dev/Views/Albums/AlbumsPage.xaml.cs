@@ -1,4 +1,4 @@
-﻿using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Input;
 using Rise.App.UserControls;
 using Rise.App.ViewModels;
 using Rise.Common.Enums;
@@ -60,6 +60,9 @@ namespace Rise.App.Views
         [RelayCommand]
         private Task AddToPlaylistAsync(PlaylistViewModel playlist)
         {
+            if (SelectedItem == null)
+                return Task.CompletedTask;
+
             var name = SelectedItem.Title;
             var items = new List<SongViewModel>();
 
@@ -97,30 +100,12 @@ namespace Rise.App.Views
         }
 
         private void MenuFlyout_Opening(object sender, object e)
-        {
-            var fl = sender as MenuFlyout;
-            var cont = MainGrid.ItemFromContainer(fl.Target);
-
-            if (cont == null)
-                fl.Hide();
-            else
-                SelectedItem = (AlbumViewModel)cont;
-        }
+            => HandleMenuFlyoutOpening<AlbumViewModel>(sender, MainGrid, item => SelectedItem = item);
 
         private void AskDiscy_Click(object sender, RoutedEventArgs e)
-        {
-            DiscyOnAlbum.IsOpen = true;
-        }
+            => DiscyOnAlbum.IsOpen = true;
 
         private async void AddFolders_Click(object sender, RoutedEventArgs e)
-        {
-            ContentDialog dialog = new()
-            {
-                Title = ResourceHelper.GetString("/Settings/MediaLibraryManageFoldersTitle"),
-                CloseButtonText = ResourceHelper.GetString("Close"),
-                Content = new Settings.MediaSourcesPage()
-            };
-            _ = await dialog.ShowAsync();
-        }
+            => await ShowManageFoldersDialogAsync();
     }
 }

@@ -1,29 +1,30 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 
 namespace Rise.Data.ViewModels
 {
     /// <summary>
-    /// Base ViewModel implementation, wraps a <typeparamref name="Type"/>
+    /// Base ViewModel implementation, wraps a <typeparamref name="TModel"/>
     /// object for the Model-View-ViewModel pattern and contains methods
     /// to handle property changes.
     /// </summary>
-    /// <typeparam name="Type">Type of the underlying model.</typeparam>
-    public abstract class ViewModel<Type> : ViewModel, IEquatable<Type>, IEquatable<ViewModel<Type>>
+    /// <typeparam name="TModel">Type of the underlying model.</typeparam>
+    public abstract class ViewModel<TModel> : ViewModel, IEquatable<TModel>, IEquatable<ViewModel<TModel>>
     {
-        private Type _model;
+        private TModel _model;
         /// <summary>
-        /// Gets or sets the underlying <see cref="Type"/> object.
+        /// Gets or sets the underlying <typeparamref name="TModel"/> object.
         /// </summary>
-        public Type Model
+        public TModel Model
         {
             get => _model;
             set
             {
-                if (_model == null || !_model.Equals(value))
+                if (!EqualityComparer<TModel>.Default.Equals(_model, value))
                 {
                     _model = value;
 
@@ -33,11 +34,11 @@ namespace Rise.Data.ViewModels
             }
         }
 
-        public bool Equals(Type other)
-            => other.Equals(_model);
+        public bool Equals(TModel other)
+            => EqualityComparer<TModel>.Default.Equals(_model, other);
 
-        public bool Equals(ViewModel<Type> other)
-            => _model.Equals(other._model);
+        public bool Equals(ViewModel<TModel> other)
+            => other is not null && EqualityComparer<TModel>.Default.Equals(_model, other._model);
     }
 
     /// <summary>
@@ -46,8 +47,8 @@ namespace Rise.Data.ViewModels
     /// </summary>
     public abstract class ViewModel : INotifyPropertyChanged
     {
-        private readonly Dictionary<PropertyChangedEventHandler, SynchronizationContext> PropertyChangedEvents =
-            new Dictionary<PropertyChangedEventHandler, SynchronizationContext>();
+        private readonly object _eventLock = new();
+        private readonly Dictionary<PropertyChangedEventHandler, SynchronizationContext> PropertyChangedEvents = new();
 
         /// <summary>
         /// Whether or not to send property change notifications.
@@ -61,11 +62,15 @@ namespace Rise.Data.ViewModels
         {
             add
             {
-                PropertyChangedEvents.Add(value, SynchronizationContext.Current);
+                if (value == null) return;
+                lock (_eventLock)
+                    PropertyChangedEvents[value] = SynchronizationContext.Current;
             }
             remove
             {
-                PropertyChangedEvents.Remove(value);
+                if (value == null) return;
+                lock (_eventLock)
+                    _ = PropertyChangedEvents.Remove(value);
             }
         }
 
@@ -78,21 +83,26 @@ namespace Rise.Data.ViewModels
         protected void OnPropertyChanged([CallerMemberName] string propertyName = null)
         {
             if (!NotifyPropertyChanges)
-            {
                 return;
+
+            KeyValuePair<PropertyChangedEventHandler, SynchronizationContext>[] snapshot;
+            lock (_eventLock)
+            {
+                if (PropertyChangedEvents.Count == 0)
+                    return;
+
+                snapshot = PropertyChangedEvents.ToArray();
             }
 
             PropertyChangedEventArgs args = new PropertyChangedEventArgs(propertyName);
-            foreach (KeyValuePair<PropertyChangedEventHandler, SynchronizationContext> @event in PropertyChangedEvents)
+            foreach (var entry in snapshot)
             {
-                if (@event.Value == null)
-                {
-                    @event.Key.Invoke(this, args);
-                }
+                var handler = entry.Key;
+                var context = entry.Value;
+                if (context == null || context == SynchronizationContext.Current)
+                    handler.Invoke(this, args);
                 else
-                {
-                    @event.Value.Post(s => @event.Key.Invoke(s, args), this);
-                }
+                    context.Post(s => handler.Invoke(s, args), this);
             }
         }
 
@@ -111,17 +121,13 @@ namespace Rise.Data.ViewModels
         protected bool Set<T>(ref T storage, T value,
             [CallerMemberName] string propertyName = null)
         {
-            if (Equals(storage, value))
-            {
+            if (EqualityComparer<T>.Default.Equals(storage, value))
                 return false;
-            }
 
             storage = value;
 
             if (NotifyPropertyChanges)
-            {
                 OnPropertyChanged(propertyName);
-            }
 
             return true;
         }

@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
 
 namespace Rise.App.Helpers;
@@ -13,7 +13,7 @@ public sealed class GroupingLabelComparer : IComparer, IComparer<string>
     private GroupingLabelComparer() { }
 
     public int Compare(object x, object y)
-        => Compare(x.ToString(), y.ToString());
+        => Compare(x?.ToString(), y?.ToString());
 
     public int Compare(string x, string y)
     {

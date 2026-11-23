@@ -1,9 +1,6 @@
-﻿using Rise.App.ViewModels;
+using Rise.App.ViewModels;
 using Rise.Common.Extensions;
-using Rise.Models;
-using Rise.NewRepository;
 using System;
-using System.Linq;
 using System.Threading.Tasks;
 using Windows.UI.ViewManagement;
 using Windows.UI.Xaml;
@@ -32,28 +29,33 @@ namespace Rise.App.Views.Albums.Properties
 
         private async void CancelButton_Click(object sender, RoutedEventArgs e)
         {
-            await Album.CancelEditsAsync();
-            _ = await ApplicationView.GetForCurrentView().TryConsolidateAsync();
+            try
+            {
+                if (Album != null)
+                    await App.MViewModel.CancelEditsAsync(Album);
+
+                _ = await ApplicationView.GetForCurrentView().TryConsolidateAsync();
+            }
+            catch (Exception ex)
+            {
+                ex.WriteToOutput();
+            }
         }
 
         private async void SaveButton_Click(object sender, RoutedEventArgs e)
         {
-            var originalAlbum = await Repository.GetItemAsync<Album>(Album.Model.Id);
+            if (Album == null)
+                return;
 
-            await Album.SaveAsync();
-
-            foreach (var song in App.MViewModel.Songs.Where(s => s.Album == originalAlbum.Title))
+            try
             {
-                song.AlbumArtist = Album.Artist;
-                song.Genres = Album.Genres;
-                song.Thumbnail = Album.Thumbnail;
-
-                await song.SaveAsync(true);
+                _ = await App.MViewModel.SaveAlbumChangesAsync(Album);
+                _ = await ApplicationView.GetForCurrentView().TryConsolidateAsync();
             }
-
-            await Repository.UpsertQueuedAsync();
-
-            _ = await ApplicationView.GetForCurrentView().TryConsolidateAsync();
+            catch (Exception ex)
+            {
+                ex.WriteToOutput();
+            }
         }
 
         private void NavigationView_SelectionChanged(Microsoft.UI.Xaml.Controls.NavigationView sender, Microsoft.UI.Xaml.Controls.NavigationViewSelectionChangedEventArgs args)

@@ -1,4 +1,4 @@
-﻿using Rise.App.UserControls;
+using Rise.App.UserControls;
 using Rise.App.ViewModels;
 using Rise.Common.Extensions.Markup;
 using Rise.Common.Helpers;
@@ -32,42 +32,25 @@ namespace Rise.App.Views
 
         private void NavigationHelper_LoadState(object sender, LoadStateEventArgs e)
         {
-            string search = e.NavigationParameter as string;
-            string[] splitText = search.ToLower().Split(" ");
+            string search = e.NavigationParameter as string ?? string.Empty;
+            string[] splitText = search.Split(' ', StringSplitOptions.RemoveEmptyEntries);
 
             string forFormat = ResourceHelper.GetString("ForX");
             ResultsFor.Text = string.Format(forFormat, search);
 
+            static bool MatchesAll(string value, string[] terms)
+                => !string.IsNullOrEmpty(value) &&
+                   terms.All(key => value.Contains(key, StringComparison.OrdinalIgnoreCase));
+
             var suitableItems = new List<object>();
-            foreach (ArtistViewModel artist in App.MViewModel.Artists)
-            {
-                bool suitable = splitText.All((key) =>
-                {
-                    return artist.Name.ToLower().Contains(key);
-                });
+            suitableItems.AddRange(App.MViewModel.Artists.Where(a => MatchesAll(a.Name, splitText)));
 
-                if (suitable)
-                    suitableItems.Add(artist);
-            }
-
-            MediaViewModel.Items.Filter = e => splitText.All((key) =>
-            {
-                return ((SongViewModel)e).Title.ToLower().Contains(key);
-            });
+            MediaViewModel.Items.Filter = item => item is SongViewModel song && MatchesAll(song.Title, splitText);
             suitableItems.AddRange(MediaViewModel.Items);
 
-            foreach (AlbumViewModel album in App.MViewModel.Albums)
-            {
-                bool suitable = splitText.All((key) =>
-                {
-                    return album.Title.ToLower().Contains(key);
-                });
+            suitableItems.AddRange(App.MViewModel.Albums.Where(a => MatchesAll(a.Title, splitText)));
 
-                if (suitable)
-                    suitableItems.Add(album);
-            }
-
-            GroupedItems = suitableItems.GroupBy(e => ResourceNames[e.GetType()]);
+            GroupedItems = suitableItems.GroupBy(item => ResourceNames[item.GetType()]);
         }
     }
 
@@ -95,15 +78,13 @@ namespace Rise.App.Views
         {
             if (item is AlbumViewModel)
                 return AlbumTemplate;
-            else if (item is ArtistViewModel)
+            if (item is ArtistViewModel)
                 return ArtistTemplate;
 
             return SongTemplate;
         }
 
         protected override DataTemplate SelectTemplateCore(object item, DependencyObject container)
-        {
-            return SelectTemplateCore(item);
-        }
+            => SelectTemplateCore(item);
     }
 }

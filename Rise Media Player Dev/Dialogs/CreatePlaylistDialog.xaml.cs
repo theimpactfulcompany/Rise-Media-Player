@@ -1,12 +1,13 @@
-﻿using Rise.App.ViewModels;
+using Rise.App.UserControls;
+using Rise.App.ViewModels;
 using Rise.Common.Constants;
 using Rise.Common.Extensions;
 using Rise.Common.Extensions.Markup;
 using Rise.Data.Json;
 using System;
+using System.IO;
 using System.Linq;
 using Windows.Storage;
-using Windows.Storage.Pickers;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 
@@ -27,8 +28,6 @@ namespace Rise.App.Dialogs
             InitializeComponent();
         }
 
-        #region Events/Methods
-
         private async void ContentDialog_PrimaryButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
         {
             string title = NewPlaylist.Title;
@@ -41,7 +40,7 @@ namespace Rise.App.Dialogs
                 return;
             }
 
-            if (!PBackend.Items.Any(p => p.Title.Equals(title, StringComparison.OrdinalIgnoreCase)))
+            if (!PBackend.Items.Any(p => string.Equals(p.Title, title, StringComparison.OrdinalIgnoreCase)))
             {
                 PBackend.Items.Add(NewPlaylist);
                 await PBackend.SaveAsync();
@@ -57,49 +56,31 @@ namespace Rise.App.Dialogs
 
         private async void ContentDialog_CloseButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
         {
-            var icon = await ApplicationData.Current.
-                LocalFolder.TryGetItemAsync($@"playlist-{NewPlaylist.Id}.png");
-
-            if (icon != null)
-                await icon.DeleteAsync(StorageDeleteOption.PermanentDelete);
+            try
+            {
+                if (Uri.TryCreate(NewPlaylist.Icon, UriKind.Absolute, out var iconUri) &&
+                    iconUri.Scheme == "ms-appdata")
+                {
+                    string fileName = Path.GetFileName(iconUri.LocalPath);
+                    var icon = await ApplicationData.Current.LocalFolder.TryGetItemAsync(fileName);
+                    if (icon != null)
+                        await icon.DeleteAsync(StorageDeleteOption.PermanentDelete);
+                }
+            }
+            catch (Exception ex)
+            {
+                ex.WriteToOutput();
+            }
         }
 
         private async void UseCustomImageButton_Click(object sender, RoutedEventArgs e)
         {
-            var picker = new FileOpenPicker
+            string copiedUri = await MediaPageBase.PickAndCopyImageAsync($"playlist-{NewPlaylist.Id}");
+            if (copiedUri != null)
             {
-                ViewMode = PickerViewMode.Thumbnail,
-                SuggestedStartLocation = PickerLocationId.PicturesLibrary
-            };
-
-            picker.FileTypeFilter.Add(".jpg");
-            picker.FileTypeFilter.Add(".jpeg");
-            picker.FileTypeFilter.Add(".png");
-
-            var file = await picker.PickSingleFileAsync();
-            if (file != null)
-            {
-                // If this throws, there's no image to work with
-                try
-                {
-                    var img = await file.GetBitmapAsync();
-                    if (img == null)
-                        return;
-
-                    img.Dispose();
-                }
-                catch { return; }
-
                 NewPlaylist.Icon = URIs.PlaylistThumb;
-
-                string filename = $@"artist-{NewPlaylist.Id}{file.FileType}";
-                _ = await file.CopyAsync(ApplicationData.Current.LocalFolder,
-                    filename, NameCollisionOption.ReplaceExisting);
-
-                NewPlaylist.Icon = $@"ms-appdata:///local/{filename}";
+                NewPlaylist.Icon = copiedUri;
             }
         }
-
-        #endregion
     }
 }

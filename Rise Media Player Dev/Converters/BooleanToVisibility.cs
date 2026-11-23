@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Data;
 
@@ -8,30 +8,16 @@ namespace Rise.App.Converters
     {
         public object Convert(object value, Type targetType, object parameter, string language)
         {
-            // Reversed result
-            if (parameter is string param)
-            {
-                if (param == "Reverse")
-                {
-                    return (value is bool val && val) ? Visibility.Collapsed : Visibility.Visible;
-                }
-            }
-
-            return (value is bool boolean && boolean) ? Visibility.Visible : Visibility.Collapsed;
+            bool isTrue = value is bool b && b;
+            bool reverse = parameter is string param && param is "Reverse" or "0";
+            return (reverse ? !isTrue : isTrue) ? Visibility.Visible : Visibility.Collapsed;
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, string language)
         {
-            // Reversed result
-            if (parameter is string param)
-            {
-                if (param == "0")
-                {
-                    return value is Visibility val && val == Visibility.Collapsed;
-                }
-            }
-
-            return value is Visibility visibility && visibility == Visibility.Visible;
+            bool isVisible = value is Visibility v && v == Visibility.Visible;
+            bool reverse = parameter is string param && param is "Reverse" or "0";
+            return reverse ? !isVisible : isVisible;
         }
     }
 }

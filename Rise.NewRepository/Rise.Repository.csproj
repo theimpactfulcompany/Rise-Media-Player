@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="15.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
   <PropertyGroup>
@@ -121,7 +121,9 @@
     <RestoreProjectStyle>PackageReference</RestoreProjectStyle>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="IMediaRepository.cs" />
     <Compile Include="Repository.cs" />
+    <Compile Include="SQLiteConnectionExtensions.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <EmbeddedResource Include="Properties\Rise.NewRepository.rd.xml" />
   </ItemGroup>
@@ -134,10 +136,6 @@
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Rise.Common\Rise.Common.csproj">
-      <Project>{86322c85-900e-4bc8-959b-141cdfd68231}</Project>
-      <Name>Rise.Common</Name>
-    </ProjectReference>
     <ProjectReference Include="..\Rise.Models\Rise.Models.csproj">
       <Project>{17d51104-b536-4d03-bd8b-74e0cce49cfb}</Project>
       <Name>Rise.Models</Name>

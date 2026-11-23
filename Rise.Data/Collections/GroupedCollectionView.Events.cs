@@ -1,4 +1,4 @@
-﻿using Rise.Common.Helpers;
+using Rise.Common.Helpers;
 using System;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
@@ -20,7 +20,13 @@ public sealed partial class GroupedCollectionView
 
     public event EventHandler<object> CurrentChanged;
     private void OnCurrentChanged()
-        => CurrentChanged?.Invoke(this, null);
+    {
+        OnPropertyChanged(nameof(CurrentItem));
+        OnPropertyChanged(nameof(CurrentPosition));
+        OnPropertyChanged(nameof(IsCurrentBeforeFirst));
+        OnPropertyChanged(nameof(IsCurrentAfterLast));
+        CurrentChanged?.Invoke(this, CurrentItem);
+    }
 
     // Observable vector
     public event VectorChangedEventHandler<object> VectorChanged;

@@ -1,4 +1,4 @@
-﻿using Rise.App.ViewModels;
+using Rise.App.ViewModels;
 using Rise.Effects;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
@@ -54,6 +54,8 @@ namespace Rise.App.Dialogs
 
             for (int i = 0; i < 10; i++)
                 Effect.Bands[i].Gain = SViewModel.EqualizerGain[i];
+
+            Effect.UpdateAllBands();
         }
 
         private void OnPresetChanged(object sender, SelectionChangedEventArgs e)

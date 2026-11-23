@@ -1,4 +1,4 @@
-﻿using Rise.App.ViewModels;
+using Rise.App.ViewModels;
 using Rise.Common.Extensions.Markup;
 using Rise.Data.Navigation;
 using System.Collections.Generic;
@@ -64,7 +64,7 @@ namespace Rise.App.Settings
         private void GroupToggleSwitch_Loaded(object sender, RoutedEventArgs e)
         {
             var toggle = (ToggleSwitch)sender;
-
+            toggle.Toggled -= GroupToggleSwitch_Toggled;
             toggle.IsOn = NavDataSource.IsGroupShown((string)toggle.Tag);
             toggle.Toggled += GroupToggleSwitch_Toggled;
         }
@@ -72,6 +72,7 @@ namespace Rise.App.Settings
         private void ItemToggleSwitch_Loaded(object sender, RoutedEventArgs e)
         {
             var toggle = (ToggleSwitch)sender;
+            toggle.Toggled -= ItemToggleSwitch_Toggled;
             toggle.Toggled += ItemToggleSwitch_Toggled;
         }
     }
@@ -81,8 +82,8 @@ namespace Rise.App.Settings
     {
         private void IconPackComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            var selected = (IconPack)IconPackComboBox.SelectedItem;
-            ViewModel.IconPack = selected.Id;
+            if (IconPackComboBox.SelectedItem is IconPack selected)
+                ViewModel.IconPack = selected.Id;
         }
 
         private void GroupToggleSwitch_Toggled(object sender, RoutedEventArgs e)

@@ -1,4 +1,4 @@
-﻿using System.Numerics;
+using System.Numerics;
 using Windows.UI;
 using Windows.UI.Composition;
 using Windows.UI.Xaml;
@@ -46,8 +46,13 @@ namespace Rise.Common.Extensions
         /// <param name="visualHost">The element that will host the <see cref="SpriteVisual"/>.</param>
         /// <returns>A tuple containing the <see cref="ScrollViewer"/>'s manipulation property set and
         /// a <see cref="SpriteVisual"/> with a parallax animation.</returns>
-        public static (CompositionPropertySet, SpriteVisual) CreateParallaxGradientVisual(this ListViewBase scrollViewer, LoadedImageSurface surface, FrameworkElement visualHost)
-            => CreateParallaxGradientVisual(scrollViewer.FindVisualChild<ScrollViewer>(), surface, visualHost);
+        public static (CompositionPropertySet, SpriteVisual) CreateParallaxGradientVisual(this ListViewBase listView, LoadedImageSurface surface, FrameworkElement visualHost)
+        {
+            var scrollViewer = listView?.FindVisualChild<ScrollViewer>();
+            return scrollViewer != null
+                ? CreateParallaxGradientVisual(scrollViewer, surface, visualHost)
+                : (null, null);
+        }
 
         /// <summary>
         /// Creates an image gradient with parallax for the provided <see cref="ScrollViewer"/>.

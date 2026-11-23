@@ -1,4 +1,4 @@
-﻿using Rise.App.ViewModels;
+using Rise.App.ViewModels;
 using Rise.Common.Constants;
 using Rise.Common.Extensions.Markup;
 using Rise.Common.Interfaces;
@@ -20,7 +20,7 @@ namespace Rise.App.Helpers
         private JsonBackendController<PlaylistViewModel> PBackend
             => App.MViewModel.PBackend;
 
-        private bool _addSeparator = false;
+        private bool _addSeparator;
         private readonly IList<PlaylistViewModel> _items;
 
         /// <summary>
@@ -37,32 +37,27 @@ namespace Rise.App.Helpers
         /// the children commands to <paramref name="addCommand"/>.
         /// </summary>
         public void AddPlaylistsToSubItem(MenuFlyoutSubItem subItem, ICommand addCommand)
-        {
-            var itms = subItem.Items;
-            if (_addSeparator)
-                itms.Add(new MenuFlyoutSeparator());
-
-            foreach (var itm in _items)
-                itms.Add(CreatePlaylistFlyoutItem(itm, addCommand));
-        }
+            => PopulatePlaylistItems(subItem.Items, addCommand);
 
         /// <summary>
         /// Adds the current playlists to the flyout, setting
         /// the children commands to <paramref name="addCommand"/>.
         /// </summary>
         public void AddPlaylistsToFlyout(MenuFlyout flyout, ICommand addCommand)
+            => PopulatePlaylistItems(flyout.Items, addCommand);
+
+        private void PopulatePlaylistItems(IList<MenuFlyoutItemBase> target, ICommand addCommand)
         {
-            var itms = flyout.Items;
             if (_addSeparator)
-                itms.Add(new MenuFlyoutSeparator());
+                target.Add(new MenuFlyoutSeparator());
 
             foreach (var itm in _items)
-                itms.Add(CreatePlaylistFlyoutItem(itm, addCommand));
+                target.Add(CreatePlaylistFlyoutItem(itm, addCommand));
         }
 
-        private MenuFlyoutItem CreatePlaylistFlyoutItem(PlaylistViewModel playlist, ICommand addCommand)
+        private static MenuFlyoutItem CreatePlaylistFlyoutItem(PlaylistViewModel playlist, ICommand addCommand)
         {
-            return new MenuFlyoutItem()
+            return new MenuFlyoutItem
             {
                 Text = playlist.Title,
                 Icon = new FontIcon
@@ -86,9 +81,7 @@ namespace Rise.App.Helpers
         /// </summary>
         /// <returns>The new playlist.</returns>
         public Task<PlaylistViewModel> CreateNewPlaylistAsync(IMediaItem item)
-        {
-            return CreateNewPlaylistAsync(new IMediaItem[1] { item });
-        }
+            => CreateNewPlaylistAsync(new IMediaItem[1] { item });
 
         /// <summary>
         /// Creates a new playlist, adds the specified items to it,
@@ -98,19 +91,14 @@ namespace Rise.App.Helpers
         /// <returns>The new playlist.</returns>
         public async Task<PlaylistViewModel> CreateNewPlaylistAsync(IEnumerable<IMediaItem> items)
         {
-            PlaylistViewModel playlist;
-            lock (_items)
+            var playlist = new PlaylistViewModel
             {
-                playlist = new()
-                {
-                    Title = ResourceHelper.GetString("UntitledPlaylist"),
-                    Description = string.Empty,
-                    Icon = URIs.PlaylistThumb
-                };
+                Title = ResourceHelper.GetString("UntitledPlaylist"),
+                Description = string.Empty,
+                Icon = URIs.PlaylistThumb
+            };
 
-                _addSeparator = true;
-            }
-
+            _addSeparator = true;
             playlist.AddItems(items);
 
             PBackend.Items.Add(playlist);

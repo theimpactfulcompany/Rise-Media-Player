@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Media;
 
@@ -13,24 +13,22 @@ namespace Rise.Common.Extensions
         /// <param name="obj">Object where search will happen.</param>
         /// <param name="name">Name of the item to find.</param>
         /// <returns>The item if it's found, null otherwise.</returns>
-        public static ChildItem FindVisualChild<ChildItem>(this FrameworkElement obj, string name)
+        public static ChildItem FindVisualChild<ChildItem>(this DependencyObject obj, string name)
             where ChildItem : FrameworkElement
         {
-            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(obj); i++)
+            if (obj == null)
+                return null;
+
+            int count = VisualTreeHelper.GetChildrenCount(obj);
+            for (int i = 0; i < count; i++)
             {
                 DependencyObject child = VisualTreeHelper.GetChild(obj, i);
-                if (child != null && child is ChildItem item && item.Name == name)
-                {
+                if (child is ChildItem item && item.Name == name)
                     return item;
-                }
-                else
-                {
-                    ChildItem childOfChild = child.FindVisualChild<ChildItem>();
-                    if (childOfChild != null)
-                    {
-                        return childOfChild;
-                    }
-                }
+
+                ChildItem childOfChild = child.FindVisualChild<ChildItem>(name);
+                if (childOfChild != null)
+                    return childOfChild;
             }
 
             return null;
@@ -45,23 +43,19 @@ namespace Rise.Common.Extensions
         public static ChildItem FindVisualChild<ChildItem>(this DependencyObject obj)
             where ChildItem : DependencyObject
         {
-            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(obj); i++)
+            if (obj == null)
+                return null;
+
+            int count = VisualTreeHelper.GetChildrenCount(obj);
+            for (int i = 0; i < count; i++)
             {
                 DependencyObject child = VisualTreeHelper.GetChild(obj, i);
-
-                if (child != null && child is ChildItem item)
-                {
+                if (child is ChildItem item)
                     return item;
-                }
-                else
-                {
-                    ChildItem childOfChild = child.FindVisualChild<ChildItem>();
 
-                    if (childOfChild != null)
-                    {
-                        return childOfChild;
-                    }
-                }
+                ChildItem childOfChild = child.FindVisualChild<ChildItem>();
+                if (childOfChild != null)
+                    return childOfChild;
             }
 
             return null;
@@ -77,26 +71,20 @@ namespace Rise.Common.Extensions
             (this DependencyObject parent, bool recurse = false)
                 where ChildItem : DependencyObject
         {
-            if (parent != null)
+            if (parent == null)
+                yield break;
+
+            int count = VisualTreeHelper.GetChildrenCount(parent);
+            for (int i = 0; i < count; i++)
             {
-                int count = VisualTreeHelper.GetChildrenCount(parent);
-                for (int i = 0; i < count; i++)
+                DependencyObject child = VisualTreeHelper.GetChild(parent, i);
+                if (child is ChildItem item)
+                    yield return item;
+
+                if (recurse && child != null)
                 {
-                    // Retrieve child visual at specified index value.
-                    DependencyObject child = VisualTreeHelper.GetChild(parent, i);
-
-                    if (child != null && child is ChildItem item)
-                    {
-                        yield return item;
-
-                        if (recurse)
-                        {
-                            foreach (var grandChild in child.GetChildren<ChildItem>(true))
-                            {
-                                yield return grandChild;
-                            }
-                        }
-                    }
+                    foreach (var grandChild in child.GetChildren<ChildItem>(true))
+                        yield return grandChild;
                 }
             }
         }
@@ -110,19 +98,16 @@ namespace Rise.Common.Extensions
         public static ParentItem FindVisualParent<ParentItem>(this DependencyObject obj)
             where ParentItem : DependencyObject
         {
-            DependencyObject parent = VisualTreeHelper.GetParent(obj);
-            if (parent == null)
+            while (obj != null)
             {
-                return null;
+                DependencyObject parent = VisualTreeHelper.GetParent(obj);
+                if (parent is ParentItem typedParent)
+                    return typedParent;
+
+                obj = parent;
             }
-            else if (parent is ParentItem)
-            {
-                return parent as ParentItem;
-            }
-            else
-            {
-                return parent.FindVisualParent<ParentItem>();
-            }
+
+            return null;
         }
     }
 }

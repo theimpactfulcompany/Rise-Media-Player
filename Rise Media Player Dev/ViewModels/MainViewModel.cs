@@ -1,8 +1,6 @@
-﻿using Rise.Common;
+using Rise.App.Services;
 using Rise.Common.Constants;
 using Rise.Common.Enums;
-using Rise.Common.Extensions;
-using Rise.Common.Extensions.Markup;
 using Rise.Common.Helpers;
 using Rise.Data.Json;
 using Rise.Data.Messages;
@@ -12,51 +10,66 @@ using Rise.NewRepository;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Xml;
 using Windows.Storage;
-using Windows.Storage.FileProperties;
 
 namespace Rise.App.ViewModels
 {
-    public sealed partial class MainViewModel : ViewModel
+    public sealed class MainViewModel : ViewModel
     {
+        private readonly IMediaRepository _repository;
+        private readonly ArtistArtService _artService;
+        private readonly LibraryIndexingCoordinator _indexing;
+
+        internal object MusicSyncLock { get; } = new();
+
+        public MainViewModel()
+            : this(Repository.Default, () => App.MusicLibrary, () => App.VideoLibrary, () => App.SViewModel.FetchOnlineData)
+        {
+        }
+
+        public MainViewModel(
+            IMediaRepository repository,
+            Func<StorageLibrary> getMusicLibrary,
+            Func<StorageLibrary> getVideoLibrary,
+            Func<bool> shouldFetchOnlineData,
+            ArtistArtService artService = null)
+        {
+            _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+            _artService = artService ?? new ArtistArtService();
+            _indexing = new LibraryIndexingCoordinator(
+                this,
+                _repository,
+                _artService,
+                getMusicLibrary,
+                getVideoLibrary,
+                shouldFetchOnlineData);
+
+            _indexing.IndexingStarted += (s, e) => IndexingStarted?.Invoke(s, e);
+            _indexing.MetadataFetchingStarted += (s, e) => MetadataFetchingStarted?.Invoke(s, e);
+            _indexing.IndexingFinished += (s, e) => IndexingFinished?.Invoke(s, e);
+        }
+
         private SafeObservableCollection<SongViewModel> _songs;
-        /// <summary>
-        /// The collection of songs in the list.
-        /// </summary>
         public SafeObservableCollection<SongViewModel> Songs
-            => _songs ??= CreateCollection<Song, SongViewModel>((s) => new(s));
+            => _songs ??= CreateCollection<Song, SongViewModel>(s => new(s));
 
         private SafeObservableCollection<AlbumViewModel> _albums;
-        /// <summary>
-        /// The collection of albums in the list.
-        /// </summary>
         public SafeObservableCollection<AlbumViewModel> Albums
-            => _albums ??= CreateCollection<Album, AlbumViewModel>((a) => new(a));
+            => _albums ??= CreateCollection<Album, AlbumViewModel>(CreateAlbumViewModel);
 
         private SafeObservableCollection<ArtistViewModel> _artists;
-        /// <summary>
-        /// The collection of artists in the list.
-        /// </summary>
         public SafeObservableCollection<ArtistViewModel> Artists
-            => _artists ??= CreateCollection<Artist, ArtistViewModel>((a) => new(a));
+            => _artists ??= CreateCollection<Artist, ArtistViewModel>(CreateArtistViewModel);
 
         private SafeObservableCollection<GenreViewModel> _genres;
-        /// <summary>
-        /// The collection of genres in the list.
-        /// </summary>
         public SafeObservableCollection<GenreViewModel> Genres
-            => _genres ??= CreateCollection<Genre, GenreViewModel>((g) => new(g));
+            => _genres ??= CreateCollection<Genre, GenreViewModel>(g => new(g));
 
         private SafeObservableCollection<VideoViewModel> _videos;
-        /// <summary>
-        /// The collection of videos in the list.
-        /// </summary>
         public SafeObservableCollection<VideoViewModel> Videos
-            => _videos ??= CreateCollection<Video, VideoViewModel>((v) => new(v));
+            => _videos ??= CreateCollection<Video, VideoViewModel>(v => new(v));
 
         private JsonBackendController<PlaylistViewModel> _pBackend;
         public JsonBackendController<PlaylistViewModel> PBackend
@@ -67,632 +80,268 @@ namespace Rise.App.ViewModels
         public JsonBackendController<BasicNotification> NBackend
             => _nBackend ??= JsonBackendController<BasicNotification>.Get("Messages");
 
-        private static SafeObservableCollection<TOutput> CreateCollection<TEntity, TOutput>(Converter<TEntity, TOutput> converter)
-            where TEntity : DbObject, new()
-        {
-            var items = Repository.GetItems<TEntity>();
-            if (!items.Any())
-                return new();
-
-            return new(items.ConvertAll(converter));
-        }
-    }
-
-    // Indexing libraries
-    public sealed partial class MainViewModel
-    {
         public event EventHandler IndexingStarted;
         public event EventHandler MetadataFetchingStarted;
         public event EventHandler<IndexingFinishedEventArgs> IndexingFinished;
 
         private bool _isScanning;
-
-        /// <summary>
-        /// Whether the app is currently looking for new media.
-        /// </summary>
         public bool IsScanning
         {
             get => _isScanning;
             private set => Set(ref _isScanning, value);
         }
 
-        private uint _indexedMedia = 0;
-        /// <summary>
-        /// The media indexed so far.
-        /// </summary>
+        private uint _indexedMedia;
         public uint IndexedMedia
         {
             get => _indexedMedia;
             set => Set(ref _indexedMedia, value);
         }
 
-        // Amount of indexed items. These are used to provide data to the
-        // IndexingFinished event.
-        private uint _indexedSongs = 0;
-        private uint _indexedVideos = 0;
+        internal void SetScanningState(bool isScanning, uint indexedMedia)
+        {
+            IsScanning = isScanning;
+            IndexedMedia = indexedMedia;
+        }
 
-        /// <summary>
-        /// Helps cancel indexing related Tasks.
-        /// </summary>
-        private readonly CancellableTaskHelper IndexingCancelHelper = new();
+        internal void UpdateIndexedMedia(uint count) => IndexedMedia = count;
+
+        internal AlbumViewModel CreateAlbumViewModel(Album model)
+            => new(model, title => Songs.Count(s => s.Model.Album == title));
+
+        internal ArtistViewModel CreateArtistViewModel(Artist model)
+            => new(
+                model,
+                name => Songs.Count(s => s.Model.Artist == name),
+                name => Albums.Count(a => a.Model.Artist == name));
 
         public async Task StartFullCrawlAsync()
         {
             try
             {
-                await StartFullCrawlAsync(new CancellationToken());
+                await StartFullCrawlAsync(CancellationToken.None);
             }
             catch (OperationCanceledException) { }
         }
 
         public Task StartFullCrawlAsync(CancellationToken token)
+            => _indexing.StartFullCrawlAsync(token);
+
+        public Task HandleLibraryChangesAsync(ChangedLibraryType type, bool queue = false)
+            => _indexing.HandleLibraryChangesAsync(type, queue);
+
+        public Task FetchArtistsArtAsync(CancellationToken token = default)
+            => _artService.PopulateArtistsArtAsync(Artists, token);
+
+        public Task UpsertAsync(SongViewModel song, bool queue = false)
+            => UpsertItemAsync(Songs, song, s => s.Model, queue);
+
+        public Task UpsertAsync(AlbumViewModel album, bool queue = false)
+            => UpsertItemAsync(Albums, album, a => a.Model, queue);
+
+        public Task UpsertAsync(ArtistViewModel artist, bool queue = false)
+            => UpsertItemAsync(Artists, artist, a => a.Model, queue);
+
+        public Task UpsertAsync(GenreViewModel genre, bool queue = false)
+            => UpsertItemAsync(Genres, genre, g => g.Model, queue);
+
+        public Task UpsertAsync(VideoViewModel video, bool queue = false)
+            => UpsertItemAsync(Videos, video, v => v.Model, queue);
+
+        public async Task DeleteVideoAsync(VideoViewModel video, bool queue = false)
         {
-            return IndexingCancelHelper.CompletePendingAsync(token)
-                .ContinueWith(async _ => await IndexingCancelHelper.RunAsync(StartFullCrawlImpl(IndexingCancelHelper.Token)));
+            if (video != null && Videos.Remove(video))
+                await PersistDeleteAsync(video.Model, queue);
         }
 
-        private async Task StartFullCrawlImpl(CancellationToken token)
+        public async Task CancelEditsAsync(SongViewModel song)
         {
-            IsScanning = true;
-            IndexingStarted?.Invoke(this, EventArgs.Empty);
-
-            await IndexLibrariesAsync(token).ConfigureAwait(false);
-            token.ThrowIfCancellationRequested();
-
-            await Task.WhenAll(
-                CheckMusicLibraryDuplicatesAsync(),
-                CheckVideoLibraryDuplicatesAsync(token)
-            );
-
-            await HandleLibraryChangesAsync(ChangedLibraryType.Both, true);
-
-            await Repository.UpsertQueuedAsync();
-            await Repository.DeleteQueuedAsync();
-
-            if (App.SViewModel.FetchOnlineData)
-            {
-                MetadataFetchingStarted?.Invoke(this, EventArgs.Empty);
-                await FetchArtistsArtAsync(token);
-            }
-
-            IndexingFinished?.Invoke(this, new(_indexedSongs, _indexedVideos));
-            IsScanning = false;
-
-            _indexedSongs = 0;
-            _indexedVideos = 0;
-            IndexedMedia = 0;
-        }
-
-        private async Task IndexLibrariesAsync(CancellationToken token)
-        {
-            var songsTask = Task.Run(async () =>
-            {
-                await foreach (var song in KnownFolders.MusicLibrary.IndexWithPrefetchAsync(QueryPresets.SongQueryOptions,
-                    PropertyPrefetchOptions.MusicProperties, SongProperties.DiscProperties))
-                {
-                    if (await SaveMusicModelsAsync(song, true).ConfigureAwait(false))
-                        this._indexedSongs++;
-
-                    IndexedMedia++;
-                }
-            }, token);
-
-            var videosTask = Task.Run(async () =>
-            {
-                await foreach (var video in KnownFolders.VideosLibrary.IndexWithPrefetchAsync(QueryPresets.VideoQueryOptions,
-                    PropertyPrefetchOptions.VideoProperties))
-                {
-                    if (await SaveVideoModelAsync(video, true).ConfigureAwait(false))
-                        this._indexedVideos++;
-
-                    IndexedMedia++;
-                }
-            }, token);
-
-            await Task.WhenAll(songsTask, videosTask);
-        }
-    }
-
-    // Artist images
-    public sealed partial class MainViewModel
-    {
-        public async Task FetchArtistsArtAsync(CancellationToken token = default)
-        {
-            using var wc = new HttpClient(new HttpClientHandler()
-            {
-                Proxy = null,
-                UseProxy = false
-            });
-
-            if (!WebHelpers.IsInternetAccessAvailable())
+            if (song == null)
                 return;
 
-            foreach (var artist in Artists)
-            {
-                if (token != null && token.IsCancellationRequested)
-                    return;
-
-                // The ms-appx prefix is used for files within the app
-                // bundle, and if it isn't present, it means a custom
-                // image has already been applied
-                if (!artist.Picture.StartsWith("ms-appx"))
-                    return;
-
-                if (!WebHelpers.IsInternetAccessAvailable())
-                    return;
-
-                string pic = await GetArtistImageAsync(artist.Name, wc).ConfigureAwait(false);
-                if (!string.IsNullOrEmpty(pic))
-                    artist.Picture = pic;
-            }
+            var original = await _repository.GetItemAsync<Song>(song.Model.Id);
+            if (original != null)
+                song.Model = original;
         }
 
-        /// <summary>
-        /// Gets artist image using the artist name.
-        /// </summary>
-        /// <param name="artist">The artist name to look up.</param>
-        /// <param name="wc">The <see cref="HttpClient"/> used for the operation.</param>
-        /// <returns>A string that represents the URL of the artist image if found, otherwise <see cref="string.Empty"/></returns>
-        public async Task<string> GetArtistImageAsync(string artist, HttpClient wc)
+        public async Task CancelEditsAsync(AlbumViewModel album)
         {
-            if (artist != ResourceHelper.GetString("UnknownArtistResource"))
+            if (album == null)
+                return;
+
+            var original = await _repository.GetItemAsync<Album>(album.Model.Id);
+            if (original != null)
+                album.Model = original;
+        }
+
+        public async Task<bool> SaveAlbumChangesAsync(AlbumViewModel album)
+        {
+            if (album == null)
+                return false;
+
+            var originalAlbum = await _repository.GetItemAsync<Album>(album.Model.Id);
+            string originalTitle = originalAlbum?.Title ?? album.Title;
+
+            await UpsertAsync(album);
+
+            foreach (var song in Songs.Where(s => s.Album == originalTitle))
             {
-                try
-                {
-                    string m_strFilePath = URLs.Deezer + "/search/artist/?q=" + artist + "&output=xml";
+                song.Album = album.Title;
+                song.AlbumArtist = album.Artist;
+                song.Genres = album.Genres;
+                song.Thumbnail = album.Thumbnail;
 
-                    wc ??= new HttpClient(new HttpClientHandler()
-                    {
-                        Proxy = null,
-                        UseProxy = false
-                    });
-
-                    string xmlStr = await wc.GetStringAsync(m_strFilePath);
-
-                    var xmlDoc = new XmlDocument();
-                    xmlDoc.LoadXml(xmlStr);
-
-                    var node = xmlDoc.DocumentElement.SelectSingleNode("/root/data/artist/picture_medium");
-                    if (node != null)
-                        return node.InnerText.Replace("<![CDATA[ ", string.Empty).Replace(" ]]>", string.Empty);
-                }
-                catch { }
+                await UpsertAsync(song, true);
             }
 
-            return string.Empty;
+            await _repository.UpsertQueuedAsync();
+            return true;
         }
-    }
 
-    // Adding items
-    public sealed partial class MainViewModel
-    {
-        /// <summary>
-        /// Saves a song to the repository and ViewModel.
-        /// </summary>
-        /// <param name="file">Song file to add.</param>
-        /// <returns>true if the song didn't exist beforehand,
-        /// otherwise false.</returns>
-        public async Task<bool> SaveMusicModelsAsync(StorageFile file, bool queue = false)
+        public async Task<bool> SaveSongChangesAsync(SongViewModel song)
         {
-            var song = await Song.GetFromFileAsync(file, false);
+            if (song == null)
+                return false;
 
-            // Check if song exists.
-            bool songExists = Songs.Any(s => s.Model.Equals(song));
+            var originalSong = await _repository.GetItemAsync<Song>(song.Model.Id);
+            if (originalSong != null)
+                _ = await _repository.DeleteAsync(originalSong);
 
-            // Check if album exists.
-            var album = Albums.FirstOrDefault(a => a.Model.Title == song.Album);
-
-            // Check if artist exists.
-            bool artistExists = Artists.Any(a => a.Model.Name == song.Artist);
-
-            // Check if genre exists.
-            bool genreExists = Genres.Any(g => g.Model.Name == song.Genres);
-
-            string albumArtist = song.AlbumArtist.ReplaceIfNullOrWhiteSpace(song.Artist);
+            await UpsertAsync(song);
 
             List<Task> tasks = new();
-
-            // If album isn't there already, add it to the database.
-            if (album == null)
+            if (!string.IsNullOrWhiteSpace(song.Artist) && !Artists.Any(a => a.Name == song.Artist))
             {
-                album = new()
-                {
-                    Title = song.Album,
-                    Artist = albumArtist,
-                    Genres = song.Genres,
-                    Thumbnail = URIs.AlbumThumb,
-                    Year = song.Year
-                };
-
-                string filename = album.Model.Id.ToString();
-                var (saved, path) = await Song.TrySaveThumbnailAsync(file, filename);
-
-                song.Thumbnail = path;
-                if (saved)
-                    album.Thumbnail = path;
-
-                tasks.Add(album.SaveAsync(queue));
-            }
-            else
-            {
-                // Update album information, in case previous songs didn't have it
-                bool save = false;
-
-                if (album.Model.Artist == "UnknownArtistResource" &&
-                    albumArtist != "UnknownArtistResource")
-                {
-                    album.Model.Artist = albumArtist;
-                    save = true;
-                }
-
-                if (album.Year == 0 && song.Year != 0)
-                {
-                    album.Year = song.Year;
-                    save = true;
-                }
-
-                if (album.Thumbnail != URIs.AlbumThumb)
-                {
-                    song.Thumbnail = album.Thumbnail;
-                }
-                else
-                {
-                    string filename = album.Model.Id.ToString();
-                    var (saved, path) = await Song.TrySaveThumbnailAsync(file, filename);
-
-                    song.Thumbnail = path;
-                    if (saved)
-                    {
-                        album.Thumbnail = path;
-                        save = true;
-                    }
-                }
-
-                if (save)
-                    tasks.Add(album.SaveAsync(queue));
-            }
-
-            // If artist isn't there already, add it to the database.
-            if (!artistExists)
-            {
-                ArtistViewModel arvm = new()
+                tasks.Add(UpsertAsync(CreateArtistViewModel(new Artist
                 {
                     Name = song.Artist,
                     Picture = URIs.ArtistThumb
-                };
-
-                tasks.Add(arvm.SaveAsync(queue));
+                }), true));
             }
 
-            // Check for the album artist as well.
-            artistExists = Artists.
-                Any(a => a.Model.Name == song.Artist || a.Model.Name == song.AlbumArtist);
-
-            // If album artist isn't there already, add it to the database.
-            if (!artistExists)
+            if (!string.IsNullOrWhiteSpace(song.AlbumArtist) &&
+                !string.Equals(song.AlbumArtist, song.Artist, StringComparison.Ordinal) &&
+                !Artists.Any(a => a.Name == song.AlbumArtist))
             {
-                ArtistViewModel arvm = new()
+                tasks.Add(UpsertAsync(CreateArtistViewModel(new Artist
                 {
                     Name = song.AlbumArtist,
                     Picture = URIs.ArtistThumb
-                };
-
-                tasks.Add(arvm.SaveAsync(queue));
+                }), true));
             }
 
-            // If genre isn't there already, add it to the database.
-            if (!genreExists)
+            if (!string.IsNullOrWhiteSpace(song.Album) && !Albums.Any(a => a.Title == song.Album))
             {
-                GenreViewModel gvm = new()
+                tasks.Add(UpsertAsync(CreateAlbumViewModel(new Album
                 {
-                    Name = song.Genres
-                };
-
-                tasks.Add(gvm.SaveAsync(queue));
-            }
-
-            // If song isn't there already, add it to the database
-            if (!songExists)
-            {
-                SongViewModel svm = new(song);
-                tasks.Add(svm.SaveAsync(queue));
+                    Title = song.Album,
+                    Artist = song.AlbumArtist,
+                    Genres = song.Genres,
+                    Thumbnail = song.Thumbnail,
+                    Year = song.Year
+                }), true));
             }
 
             await Task.WhenAll(tasks);
-
-            return !songExists;
+            await _repository.UpsertQueuedAsync();
+            return true;
         }
 
-        /// <summary>
-        /// Saves a video to the repository and ViewModel.
-        /// </summary>
-        /// <param name="queue">Whether to queue database operations. If set to
-        /// true, you must call <see cref="Repository.UpsertQueuedAsync"/> to
-        /// commit the changes to the database.</param>
-        /// <param name="file">Video file to add.</param>
-        /// <returns>true if the video didn't exist beforehand,
-        /// otherwise false.</returns>
-        public async Task<bool> SaveVideoModelAsync(StorageFile file, bool queue = false)
+        public async Task RemoveSongAsync(SongViewModel song, bool queue = false)
         {
-            var video = await Video.GetFromFileAsync(file);
-            bool videoExists = Videos.
-                Any(v => v.Model.Equals(video));
+            if (song == null)
+                return;
 
-            if (!videoExists)
-            {
-                VideoViewModel vid = new(video);
-                await vid.SaveAsync(queue);
-            }
-
-            return !videoExists;
-        }
-    }
-
-    // Removing items
-    public sealed partial class MainViewModel
-    {
-        /// <summary>
-        /// Removes the provided song from the database and songs collection.
-        /// This method also checks if its album and artist can be removed.
-        /// </summary>
-        /// <param name="queue">Whether to queue database operations. If set to
-        /// true, you must call <see cref="Repository.DeleteQueuedAsync"/> to
-        /// commit the changes to the database.</param>
-        public async Task RemoveSongAsync(SongViewModel song, bool queue)
-        {
             _ = Songs.Remove(song);
-            if (queue)
-                _ = Repository.QueueRemove(song.Model);
-            else
-                _ = await Repository.DeleteAsync(song.Model);
+            await PersistDeleteAsync(song.Model, queue);
 
             var artist = Artists.FirstOrDefault(a => a.Model.Name == song.Model.Artist);
             _ = await TryRemoveArtistAsync(artist, queue);
 
             var album = Albums.FirstOrDefault(a => a.Model.Title == song.Model.Album);
-            bool removedAlbum = await TryRemoveAlbumAsync(album, queue);
-
-            if (removedAlbum)
+            if (await TryRemoveAlbumAsync(album, queue))
             {
                 var albumArtist = Artists.FirstOrDefault(a => a.Model.Name == song.Model.AlbumArtist);
                 _ = await TryRemoveArtistAsync(albumArtist, queue);
             }
         }
 
-        /// <summary>
-        /// Removes the provided album from the database and albums collection,
-        /// only if there are no songs with the album.
-        /// </summary>
-        /// <param name="queue">Whether to queue database operations. If set to
-        /// true, you must call <see cref="Repository.DeleteQueuedAsync"/> to
-        /// commit the changes to the database.</param>
-        /// <returns>true if the album was removed, false otherwise.</returns>
-        public async Task<bool> TryRemoveAlbumAsync(AlbumViewModel album, bool queue)
+        public async Task<bool> TryRemoveAlbumAsync(AlbumViewModel album, bool queue = false)
         {
+            if (album == null)
+                return false;
+
             bool hasNoTracks = Songs.Count(s => s.Model.Album == album.Model.Title) == 0;
             if (hasNoTracks)
             {
                 _ = Albums.Remove(album);
-                if (queue)
-                    _ = Repository.QueueRemove(album.Model);
-                else
-                    _ = await Repository.DeleteAsync(album.Model);
+                await PersistDeleteAsync(album.Model, queue);
             }
 
             return hasNoTracks;
         }
 
-        /// <summary>
-        /// Removes the provided artist from the database and artists collection,
-        /// only if there are no songs or albums with the artist.
-        /// </summary>
-        /// <param name="queue">Whether to queue database operations. If set to
-        /// true, you must call <see cref="Repository.DeleteQueuedAsync"/> to
-        /// commit the changes to the database.</param>
-        /// <returns>true if the artist was removed, false otherwise.</returns>
-        public async Task<bool> TryRemoveArtistAsync(ArtistViewModel artist, bool queue)
+        public async Task<bool> TryRemoveArtistAsync(ArtistViewModel artist, bool queue = false)
         {
-            var songCount = Songs.Count(s => s.Artist == artist.Model.Name);
-            var albumCount = Albums.Count(a => a.Artist == artist.Model.Name);
+            if (artist == null)
+                return false;
 
-            bool hasNoMedia = songCount == 0 && albumCount == 0;
+            string name = artist.Model.Name;
+            bool hasNoMedia = Songs.Count(s => s.Model.Artist == name || s.Model.AlbumArtist == name) == 0 &&
+                              Albums.Count(a => a.Model.Artist == name) == 0;
+
             if (hasNoMedia)
             {
                 _ = Artists.Remove(artist);
-                if (queue)
-                    _ = Repository.QueueRemove(artist.Model);
-                else
-                    _ = await Repository.DeleteAsync(artist.Model);
+                await PersistDeleteAsync(artist.Model, queue);
             }
 
             return hasNoMedia;
         }
-    }
 
-    // Change handling
-    public sealed partial class MainViewModel
-    {
-        public async Task HandleLibraryChangesAsync(ChangedLibraryType type, bool queue = false)
+        private SafeObservableCollection<TOutput> CreateCollection<TEntity, TOutput>(Converter<TEntity, TOutput> converter)
+            where TEntity : DbObject, new()
         {
-            switch (type)
-            {
-                case ChangedLibraryType.Music:
-                    await HandleMusicLibraryChangesAsync(queue);
-                    break;
-                case ChangedLibraryType.Videos:
-                    await HandleVideoLibraryChangesAsync(queue);
-                    break;
-                case ChangedLibraryType.Both:
-                    await Task.WhenAll(
-                        HandleMusicLibraryChangesAsync(queue),
-                        HandleVideoLibraryChangesAsync(queue)
-                    );
-                    break;
-                default:
-                    throw new NotSupportedException($"The provided ChangedLibraryType ({type}) is not supported by this method.");
-            }
+            var items = _repository.GetItems<TEntity>();
+            return items.Count == 0 ? new() : new(items.ConvertAll(converter));
         }
 
-        private async Task HandleMusicLibraryChangesAsync(bool queue = false)
+        private async Task UpsertItemAsync<TViewModel, TModel>(
+            SafeObservableCollection<TViewModel> collection,
+            TViewModel item,
+            Func<TViewModel, TModel> modelSelector,
+            bool queue)
+            where TModel : DbObject
         {
-            await using var changes = await App.MusicLibrary.GetLibraryChangesAsync();
-
-            if (changes.Status != StorageLibraryChangeStatus.HasChange)
+            if (item == null)
                 return;
 
-            foreach (var addedItem in changes.AddedItems)
-            {
-                _ = await SaveMusicModelsAsync(addedItem, queue);
-            }
+            if (!collection.Contains(item))
+                collection.Add(item);
 
-            foreach (var removedItemPath in changes.RemovedItems)
-            {
-                if (string.IsNullOrEmpty(removedItemPath))
-                    continue;
-
-                var song = Songs.FirstOrDefault(s => s.Location.Equals(removedItemPath, StringComparison.OrdinalIgnoreCase));
-                if (song != null)
-                    await RemoveSongAsync(song, queue);
-            }
+            var model = modelSelector(item);
+            if (queue)
+                _ = _repository.QueueUpsert(model);
+            else
+                _ = await _repository.UpsertAsync(model);
         }
 
-        private async Task HandleVideoLibraryChangesAsync(bool queue = false)
+        private Task PersistDeleteAsync(DbObject model, bool queue)
         {
-            await using var changes = await App.VideoLibrary.GetLibraryChangesAsync();
-
-            if (changes.Status != StorageLibraryChangeStatus.HasChange)
-                return;
-
-            foreach (var addedItem in changes.AddedItems)
+            if (queue)
             {
-                _ = await SaveVideoModelAsync(addedItem, queue);
+                _ = _repository.QueueRemove(model);
+                return Task.CompletedTask;
             }
 
-            foreach (var removedItemPath in changes.RemovedItems)
-            {
-                if (string.IsNullOrEmpty(removedItemPath))
-                    continue;
-
-                var video = App.MViewModel.Videos.FirstOrDefault(v => v.Location.Equals(removedItemPath, StringComparison.OrdinalIgnoreCase));
-
-                if (video == null)
-                    continue;
-
-                await video.DeleteAsync(queue);
-            }
-        }
-
-        /// <summary>
-        /// Checks for duplicates in the music library.
-        /// </summary>
-        public async Task CheckMusicLibraryDuplicatesAsync()
-        {
-            List<SongViewModel> songDuplicates = new();
-            List<ArtistViewModel> artistDuplicates = new();
-            List<AlbumViewModel> albumDuplicates = new();
-            List<GenreViewModel> genreDuplicates = new();
-
-            // Check for duplicates and remove if any duplicate is found.
-            for (int i = 0; i < Songs.Count; i++)
-            {
-                for (int j = i + 1; j < Songs.Count; j++)
-                {
-                    if (Songs[i].Location == Songs[j].Location)
-                        songDuplicates.Add(Songs[j]);
-                }
-            }
-
-            for (int i = 0; i < Artists.Count; i++)
-            {
-                for (int j = i + 1; j < Artists.Count; j++)
-                {
-                    if (Artists[i].Name.Equals(Artists[j].Name))
-                        artistDuplicates.Add(Artists[j]);
-                }
-            }
-
-            for (int i = 0; i < Albums.Count; i++)
-            {
-                for (int j = i + 1; j < Albums.Count; j++)
-                {
-                    if (Albums[i].Title.Equals(Albums[j].Title))
-                        albumDuplicates.Add(Albums[j]);
-                }
-            }
-
-            for (int i = 0; i < Genres.Count; i++)
-            {
-                for (int j = i + 1; j < Genres.Count; j++)
-                {
-                    if (Genres[i].Name.Equals(Genres[j].Name))
-                        genreDuplicates.Add(Genres[j]);
-                }
-            }
-
-            foreach (var song in songDuplicates)
-                await RemoveSongAsync(song, true);
-
-            foreach (var artist in artistDuplicates)
-            {
-                _ = Artists.Remove(artist);
-                _ = Repository.QueueRemove(artist.Model);
-            }
-
-            foreach (var album in albumDuplicates)
-            {
-                _ = Albums.Remove(album);
-                _ = Repository.QueueRemove(album.Model);
-            }
-
-            foreach (var genre in genreDuplicates)
-            {
-                _ = Genres.Remove(genre);
-                _ = Repository.QueueRemove(genre.Model);
-            }
-        }
-
-        /// <summary>
-        /// Checks for duplicates in the video library.
-        /// </summary>
-        public async Task CheckVideoLibraryDuplicatesAsync(CancellationToken token = default)
-        {
-            if (token.IsCancellationRequested)
-                return;
-
-            List<VideoViewModel> duplicates = new();
-
-            // Check for duplicates and remove if any duplicate is found.
-            for (int i = 0; i < Videos.Count; i++)
-            {
-                if (token.IsCancellationRequested)
-                    return;
-
-                for (int j = i + 1; j < Videos.Count; j++)
-                {
-                    if (token.IsCancellationRequested)
-                        return;
-
-                    if (Videos[i].Location == Videos[j].Location)
-                    {
-                        duplicates.Add(Videos[j]);
-                    }
-                }
-            }
-
-            foreach (VideoViewModel video in duplicates)
-            {
-                if (token.IsCancellationRequested)
-                    return;
-
-                await video.DeleteAsync(true);
-            }
+            return _repository.DeleteAsync(model);
         }
     }
 
     public sealed class IndexingFinishedEventArgs : EventArgs
     {
-        public uint IndexedSongs { get; private set; }
-        public uint IndexedVideos { get; private set; }
+        public uint IndexedSongs { get; }
+        public uint IndexedVideos { get; }
 
         public IndexingFinishedEventArgs(uint songs, uint videos)
         {

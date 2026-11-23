@@ -1,8 +1,9 @@
-﻿using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Input;
 using Microsoft.Toolkit.Uwp.UI;
 using Rise.App.Helpers;
 using Rise.App.UserControls;
 using Rise.App.ViewModels;
+using Rise.Common.Extensions;
 using Rise.Common.Helpers;
 using Rise.Common.Threading;
 using Rise.Data.ViewModels;
@@ -103,14 +104,20 @@ namespace Rise.App.Views
             TitleAreaTranslate.Y = -newValue;
         }
 
+        private bool _lyricsSubscribed;
+
         private void OnPageUnloaded(object sender, RoutedEventArgs e)
         {
-            goToMiniViewCommand = null;
-            toggleFullScreenCommand = null;
-
-            MPViewModel.Player.SeekCompleted -= Player_SeekCompleted;
-            MPViewModel.Player.PlaybackSession.PositionChanged -= PlaybackSession_PositionChanged;
-            MPViewModel.PlayingItemChanged -= MPViewModel_PlayingItemChanged;
+            if (_lyricsSubscribed)
+            {
+                _lyricsSubscribed = false;
+                MPViewModel.PlayingItemChanged -= MPViewModel_PlayingItemChanged;
+                if (MPViewModel.PlayerCreated)
+                {
+                    MPViewModel.Player.SeekCompleted -= Player_SeekCompleted;
+                    MPViewModel.Player.PlaybackSession.PositionChanged -= PlaybackSession_PositionChanged;
+                }
+            }
 
             PlayerControlsTransformWatcher?.Dispose();
             PlayerControlsLyricsWatcher?.Dispose();
@@ -156,17 +163,28 @@ namespace Rise.App.Views
 
         private async void OnLyricsListLoaded(object sender, RoutedEventArgs e)
         {
-            if (!SViewModel.FetchOnlineData)
+            try
             {
-                _ = VisualStateManager.GoToState(this, "LyricsUnavailableState", true);
-                return;
+                if (!SViewModel.FetchOnlineData)
+                {
+                    _ = VisualStateManager.GoToState(this, "LyricsUnavailableState", true);
+                    return;
+                }
+
+                await UpdateCurrentLyricsAsync();
+
+                if (!_lyricsSubscribed)
+                {
+                    _lyricsSubscribed = true;
+                    MPViewModel.PlayingItemChanged += MPViewModel_PlayingItemChanged;
+                    MPViewModel.Player.SeekCompleted += Player_SeekCompleted;
+                    MPViewModel.Player.PlaybackSession.PositionChanged += PlaybackSession_PositionChanged;
+                }
             }
-
-            await UpdateCurrentLyricsAsync();
-
-            MPViewModel.PlayingItemChanged += MPViewModel_PlayingItemChanged;
-            MPViewModel.Player.SeekCompleted += Player_SeekCompleted;
-            MPViewModel.Player.PlaybackSession.PositionChanged += PlaybackSession_PositionChanged;
+            catch (Exception ex)
+            {
+                ex.WriteToOutput();
+            }
         }
 
         private void OnExitButtonClick(object sender, RoutedEventArgs e)
@@ -179,7 +197,16 @@ namespace Rise.App.Views
             => PlayerControls.Show();
 
         private async void MPViewModel_PlayingItemChanged(object sender, MediaPlaybackItem e)
-            => await UpdateCurrentLyricsAsync();
+        {
+            try
+            {
+                await UpdateCurrentLyricsAsync();
+            }
+            catch (Exception ex)
+            {
+                ex.WriteToOutput();
+            }
+        }
 
         private bool ApplyVisualizer(int index) => index switch
         {
@@ -225,54 +252,73 @@ namespace Rise.App.Views
             try
             {
                 var props = MPViewModel.PlayingItemProperties;
+                if (props == null)
+                    return Enumerable.Empty<SyncedLyricItem>();
+
                 var lyrics = await MusixmatchHelper.GetSyncedLyricsAsync(props.Title, props.Artist);
 
                 var body = lyrics?.Message?.Body;
-                return body?.Subtitle?.Subtitles?.Where(i => !string.IsNullOrWhiteSpace(i.Text));
+                return body?.Subtitle?.Subtitles?.Where(i => !string.IsNullOrWhiteSpace(i.Text))
+                    ?? Enumerable.Empty<SyncedLyricItem>();
             }
-            catch { }
+            catch (Exception ex)
+            {
+                ex.WriteToOutput();
+            }
 
             return Enumerable.Empty<SyncedLyricItem>();
         }
 
         private void LyricItem_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
         {
-            var syncedLyricItem = (SyncedLyricItem)((LyricItem)sender).DataContext;
-            MPViewModel.Player.PlaybackSession.Position = syncedLyricItem.TimeSpan + TimeSpan.FromMilliseconds(150);
+            if (sender is FrameworkElement { DataContext: SyncedLyricItem syncedLyricItem } && MPViewModel.PlayerCreated)
+                MPViewModel.Player.PlaybackSession.Position = syncedLyricItem.TimeSpan + TimeSpan.FromMilliseconds(150);
         }
 
         private async void Player_SeekCompleted(MediaPlayer sender, object args)
         {
-            await Dispatcher;
-            UpdateCurrentLyric(sender.PlaybackSession.Position);
+            try
+            {
+                await Dispatcher;
+                UpdateCurrentLyric(sender.PlaybackSession.Position);
+            }
+            catch (Exception ex)
+            {
+                ex.WriteToOutput();
+            }
         }
 
         private async void PlaybackSession_PositionChanged(MediaPlaybackSession sender, object args)
         {
-            await Dispatcher;
-            UpdateCurrentLyric(sender.Position);
+            try
+            {
+                await Dispatcher;
+                UpdateCurrentLyric(sender.Position);
+            }
+            catch (Exception ex)
+            {
+                ex.WriteToOutput();
+            }
         }
 
         private void UpdateCurrentLyric(TimeSpan playerPosition)
         {
-            var lyricsItem = _lyrics?.LastOrDefault(item => item.TimeSpan.TotalSeconds < playerPosition.TotalSeconds);
+            if (_lyrics == null || LyricsList == null)
+                return;
 
-            if (lyricsItem != null && lyricsItem != LyricsList.SelectedItem)
-            {
-                var currentlySelectedLyric = _lyrics.FirstOrDefault(item => item.IsSelected);
+            var lyricsItem = _lyrics.LastOrDefault(item => item.TimeSpan.TotalSeconds < playerPosition.TotalSeconds);
+            if (lyricsItem == null || lyricsItem == LyricsList.SelectedItem)
+                return;
 
-                if (currentlySelectedLyric != null)
-                {
-                    var currentlySelectedLyricIndex = _lyrics.IndexOf(currentlySelectedLyric);
-                    _lyrics[currentlySelectedLyricIndex].IsSelected = false;
-                }
+            var currentlySelectedLyric = _lyrics.FirstOrDefault(item => item.IsSelected);
+            if (currentlySelectedLyric != null)
+                currentlySelectedLyric.IsSelected = false;
 
-                int selectedLyricIndex = _lyrics.IndexOf(lyricsItem);
-                _lyrics[selectedLyricIndex].IsSelected = true;
+            lyricsItem.IsSelected = true;
 
-                LyricsList.SelectedIndex = selectedLyricIndex;
-                LyricsList.ScrollIntoView(lyricsItem);
-            }
+            int selectedLyricIndex = _lyrics.IndexOf(lyricsItem);
+            LyricsList.SelectedIndex = selectedLyricIndex;
+            LyricsList.ScrollIntoView(lyricsItem);
         }
     }
 }

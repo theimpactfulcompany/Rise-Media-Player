@@ -1,4 +1,4 @@
-﻿using Rise.Common.Enums;
+using Rise.Common.Enums;
 using Rise.Common.Extensions;
 using Rise.Common.Helpers;
 using Rise.Data.ViewModels;
@@ -17,10 +17,10 @@ namespace Rise.App.ViewModels
             UpdateStartupTaskInfo();
         }
 
-        public string[] OpenLocations = new string[7]
+        public string[] OpenLocations = new string[6]
         {
             "HomePage", "PlaylistsPage", "SongsPage",
-            "ArtistsPage", "AlbumsPage", "GenresPage", "LocalVideosPage"
+            "ArtistsPage", "AlbumsPage", "LocalVideosPage"
         };
 
         #region Startup
@@ -43,28 +43,38 @@ namespace Rise.App.ViewModels
             set => Set(value, "WindowsBehaviours");
         }
 
-        public async Task OpenAtStartupAsync()
+        public async Task OpenAtStartupAsync(bool? desiredState = null)
         {
-            var task = await StartupTask.GetAsync(StartupTaskId);
-            bool isEnabled = task.State switch
+            try
             {
-                StartupTaskState.Enabled => true,
-                StartupTaskState.EnabledByPolicy => true,
-                _ => false,
-            };
+                var task = await StartupTask.GetAsync(StartupTaskId);
+                bool isEnabled = task.State is StartupTaskState.Enabled or StartupTaskState.EnabledByPolicy;
+                bool enable = desiredState ?? !isEnabled;
 
-            if (!isEnabled)
-                _ = await task.RequestEnableAsync();
-            else
-                task.Disable();
+                if (enable && !isEnabled)
+                    _ = await task.RequestEnableAsync();
+                else if (!enable && isEnabled)
+                    task.Disable();
 
-            SetOpenAtStartupInfo(task.State);
+                SetOpenAtStartupInfo(task.State);
+            }
+            catch (Exception ex)
+            {
+                ex.WriteToOutput();
+            }
         }
 
         public void UpdateStartupTaskInfo()
         {
-            var task = StartupTask.GetAsync(StartupTaskId).Get();
-            SetOpenAtStartupInfo(task.State);
+            try
+            {
+                var task = StartupTask.GetAsync(StartupTaskId).Get();
+                SetOpenAtStartupInfo(task.State);
+            }
+            catch (Exception ex)
+            {
+                ex.WriteToOutput();
+            }
         }
 
         private void SetOpenAtStartupInfo(StartupTaskState state)
@@ -141,7 +151,7 @@ namespace Rise.App.ViewModels
             set => Set(value, "Appearance");
         }
 
-        public string Open => OpenLocations[OpenTo];
+        public string Open => OpenLocations[Math.Clamp(OpenTo, 0, OpenLocations.Length - 1)];
 
         public bool PickUp
         {
@@ -366,20 +376,8 @@ namespace Rise.App.ViewModels
 
         public double Volume
         {
-            get
-            {
-                var value = Get(100, "Playback");
-
-                if (App.MPViewModel.Player.Volume != value)
-                    App.MPViewModel.Player.Volume = value;
-
-                return value;
-            }
-            set
-            {
-                Set(value, "Playback");
-                App.MPViewModel.Player.Volume = value;
-            }
+            get => Math.Clamp(Get(1.0, PlaybackContainer), 0.0, 1.0);
+            set => Set(Math.Clamp(value, 0.0, 1.0), PlaybackContainer);
         }
         #endregion
 
@@ -413,12 +411,15 @@ namespace Rise.App.ViewModels
     // Getting and setting app settings
     public sealed partial class SettingsViewModel : ViewModel
     {
+        private const string LocalContainer = "Local";
+        private const string PlaybackContainer = "Playback";
+
         /// <inheritdoc cref="SettingsHelpers.GetLocal{T}(T, string, string)"/>
-        private T Get<T>(T defaultValue, string container = "Local", [CallerMemberName] string setting = "")
+        private T Get<T>(T defaultValue, string container = LocalContainer, [CallerMemberName] string setting = "")
             => SettingsHelpers.GetLocal(defaultValue, container, setting);
 
         /// <inheritdoc cref="SettingsHelpers.SetLocal{T}(T, string, string)"/>
-        private void Set<T>(T newValue, string container = "Local", [CallerMemberName] string setting = "")
+        private void Set<T>(T newValue, string container = LocalContainer, [CallerMemberName] string setting = "")
         {
             SettingsHelpers.SetLocal(newValue, container, setting);
             OnPropertyChanged(setting);

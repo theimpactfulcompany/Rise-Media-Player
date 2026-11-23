@@ -1,4 +1,4 @@
-﻿using Windows.UI.Xaml;
+using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 
 namespace Rise.App.UserControls
@@ -48,14 +48,24 @@ namespace Rise.App.UserControls
             UpdateBreakpoint(this);
             PerformResize(ActualWidth);
 
-            _leftToken = RegisterPropertyChangedCallback(LeftPaneProperty, OnPanesUpdated);
-            _rightToken = RegisterPropertyChangedCallback(RightPaneProperty, OnPanesUpdated);
+            if (_leftToken == 0)
+                _leftToken = RegisterPropertyChangedCallback(LeftPaneProperty, OnPanesUpdated);
+            if (_rightToken == 0)
+                _rightToken = RegisterPropertyChangedCallback(RightPaneProperty, OnPanesUpdated);
         }
 
         private void OnControlUnloaded(object sender, RoutedEventArgs e)
         {
-            UnregisterPropertyChangedCallback(LeftPaneProperty, _leftToken);
-            UnregisterPropertyChangedCallback(RightPaneProperty, _rightToken);
+            if (_leftToken != 0)
+            {
+                UnregisterPropertyChangedCallback(LeftPaneProperty, _leftToken);
+                _leftToken = 0;
+            }
+            if (_rightToken != 0)
+            {
+                UnregisterPropertyChangedCallback(RightPaneProperty, _rightToken);
+                _rightToken = 0;
+            }
         }
     }
 

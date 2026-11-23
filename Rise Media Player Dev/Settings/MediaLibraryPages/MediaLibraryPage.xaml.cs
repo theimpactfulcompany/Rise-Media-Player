@@ -1,4 +1,4 @@
-﻿using Rise.App.ViewModels;
+using Rise.App.ViewModels;
 using Rise.Common.Extensions.Markup;
 using System.Collections.Generic;
 using Windows.UI.Xaml;
@@ -22,10 +22,6 @@ namespace Rise.App.Settings
         }
 
         private void GotoManage_Click(object sender, RoutedEventArgs e)
-        {
-            AllSettingsPage.Current.MainSettingsHeader.Text = ResourceHelper.GetString("/Settings/MediaLibraryManageFoldersTitle");
-            AllSettingsPage.Current.MainSettingsHeaderIcon.Glyph = "\uE838";
-            AllSettingsPage.Current.SettingsMainFrame.Navigate(typeof(MediaSourcesPage));
-        }
+            => _ = Frame.Navigate(typeof(MediaSourcesPage));
     }
 }

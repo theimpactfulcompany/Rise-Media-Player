@@ -1,5 +1,3 @@
-﻿using Rise.Common.Enums;
-using Rise.Common.Interfaces;
 using SQLite;
 using System;
 
@@ -9,7 +7,7 @@ namespace Rise.Models
     /// Represents a genre.
     /// </summary>
     [Table("Genres")]
-    public sealed class Genre : DbObject, IEquatable<Genre>, IMatchable<Genre>
+    public sealed class Genre : DbObject, IEquatable<Genre>
     {
         [Column(nameof(Name))]
         public string Name { get; set; }
@@ -17,34 +15,13 @@ namespace Rise.Models
         /// <summary>
         /// Returns the genre.
         /// </summary>
-        public override string ToString()
-        {
-            return Name;
-        }
+        public override string ToString() => Name;
 
         public bool Equals(Genre other)
-        {
-            return Name == other.Name;
-        }
+            => other is not null && string.Equals(Name, other.Name, StringComparison.Ordinal);
 
-        public override int GetHashCode()
-        {
-            return Name.GetHashCode();
-        }
+        public override bool Equals(object obj) => Equals(obj as Genre);
 
-        public MatchLevel Matches(Genre other)
-        {
-            if (Name.Equals(other.Name))
-            {
-                return MatchLevel.Full;
-            }
-
-            if (Name.Contains(other.Name))
-            {
-                return MatchLevel.Partial;
-            }
-
-            return MatchLevel.None;
-        }
+        public override int GetHashCode() => Name?.GetHashCode() ?? 0;
     }
 }

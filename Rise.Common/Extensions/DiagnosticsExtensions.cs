@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 
 namespace Rise.Common.Extensions
@@ -23,7 +23,7 @@ namespace Rise.Common.Extensions
         /// </summary>
         public static void WriteToOutput(this Exception ex)
         {
-            if (Debugger.IsAttached && IsDebugBuild)
+            if (ex != null && Debugger.IsAttached && IsDebugBuild)
             {
                 Debug.WriteLine("--- Exception ---");
                 Debug.Write("Exception type: ");

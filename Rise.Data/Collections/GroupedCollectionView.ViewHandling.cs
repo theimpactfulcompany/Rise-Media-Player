@@ -1,4 +1,4 @@
-﻿using Rise.Common.Extensions;
+using Rise.Common.Extensions;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -16,10 +16,11 @@ public sealed partial class GroupedCollectionView
         get => _view[index];
         set
         {
-            _view[index] = value;
+            var oldItem = _view[index];
+            RemoveItemFromGroup(oldItem);
 
-            RemoveItemFromGroup(_view[index]);
-            AddItemToGroup(_view[index]);
+            _view[index] = value;
+            AddItemToGroup(value);
 
             OnVectorChanged(CollectionChange.ItemChanged, (uint)index);
         }
@@ -72,8 +73,11 @@ public sealed partial class GroupedCollectionView
         _view.RemoveAt(itemIndex);
         RemoveItemFromGroup(item);
 
-        if (itemIndex <= CurrentPosition)
+        if (CurrentPosition >= 0 && itemIndex <= CurrentPosition)
+        {
             CurrentPosition--;
+            OnCurrentChanged();
+        }
 
         OnVectorChanged(CollectionChange.ItemRemoved, (uint)itemIndex);
     }
@@ -94,13 +98,13 @@ public sealed partial class GroupedCollectionView
         {
             if (newStartingIndex == 0 || _view.Count == 0)
                 newIndex = 0;
-            else if (newStartingIndex == _source.Count - 1)
-                newIndex = _view.Count - 1;
+            else if (_source != null && newStartingIndex >= _source.Count - 1)
+                newIndex = _view.Count;
             else if (viewIndex.HasValue)
-                newIndex = viewIndex.Value;
-            else
+                newIndex = Math.Min(viewIndex.Value, _view.Count);
+            else if (_source != null)
             {
-                for (int i = 0, j = 0; i < _source.Count; i++)
+                for (int i = 0, j = 0; i < _source.Count && j < _view.Count; i++)
                 {
                     if (i == newStartingIndex)
                     {
@@ -108,7 +112,7 @@ public sealed partial class GroupedCollectionView
                         break;
                     }
 
-                    if (_view[j] == _source[i])
+                    if (Equals(_view[j], _source[i]))
                         j++;
                 }
             }
@@ -117,8 +121,11 @@ public sealed partial class GroupedCollectionView
         _view.Insert(newIndex, newItem);
         AddItemToGroup(newItem);
 
-        if (newIndex <= CurrentPosition)
+        if (CurrentPosition >= 0 && newIndex <= CurrentPosition)
+        {
             CurrentPosition++;
+            OnCurrentChanged();
+        }
 
         OnVectorChanged(CollectionChange.ItemInserted, (uint)newIndex);
         return true;
@@ -211,7 +218,7 @@ public sealed partial class GroupedCollectionView
 
         object key = GetItemGroup(item);
 
-        var group = (ICollectionViewGroup)_collectionGroups.FirstOrDefault(g => ((ICollectionViewGroup)g).Group == key);
+        var group = (ICollectionViewGroup)_collectionGroups.FirstOrDefault(g => Equals(((ICollectionViewGroup)g).Group, key));
         _ = group?.GroupItems.Remove(item);
     }
 
@@ -220,7 +227,8 @@ public sealed partial class GroupedCollectionView
 
     public bool HasMoreItems => _incrementalSource?.HasMoreItems ?? false;
     public IAsyncOperation<LoadMoreItemsResult> LoadMoreItemsAsync(uint count)
-        => _incrementalSource?.LoadMoreItemsAsync(count);
+        => _incrementalSource?.LoadMoreItemsAsync(count)
+            ?? System.Threading.Tasks.Task.FromResult(new LoadMoreItemsResult { Count = 0 }).AsAsyncOperation();
 
     private sealed class CollectionGroupComparer : IComparer, IComparer<object>, IComparer<ICollectionViewGroup>
     {

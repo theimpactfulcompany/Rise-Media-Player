@@ -1,4 +1,3 @@
-﻿using Rise.Common.Threading;
 using System;
 using System.Threading.Tasks;
 using Windows.ApplicationModel.Core;
@@ -43,17 +42,27 @@ namespace Rise.Common.Extensions
             var window = CoreApplication.CreateNewView();
             var tcs = new TaskCompletionSource<ApplicationView>();
 
-            _ = window.DispatcherQueue.TryEnqueue(() =>
+            bool enqueued = window.DispatcherQueue.TryEnqueue(() =>
             {
-                var frame = new Frame();
-                _ = frame.Navigate(typeof(TPage), parameter);
+                try
+                {
+                    var frame = new Frame();
+                    _ = frame.Navigate(typeof(TPage), parameter);
 
-                var curr = Window.Current;
-                curr.Content = frame;
-                curr.Activate();
+                    var curr = Window.Current;
+                    curr.Content = frame;
+                    curr.Activate();
 
-                tcs.SetResult(ApplicationView.GetForCurrentView());
+                    _ = tcs.TrySetResult(ApplicationView.GetForCurrentView());
+                }
+                catch (Exception ex)
+                {
+                    _ = tcs.TrySetException(ex);
+                }
             });
+
+            if (!enqueued)
+                _ = tcs.TrySetException(new InvalidOperationException("Unable to schedule new view creation on dispatcher queue."));
 
             return tcs.Task;
         }

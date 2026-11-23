@@ -1,4 +1,4 @@
-﻿using Rise.App.ViewModels;
+using Rise.App.ViewModels;
 using Rise.Common.Enums;
 using Rise.Common.Extensions.Markup;
 using Rise.Models;
@@ -47,9 +47,12 @@ namespace Rise.App.Settings
 
         private void OnPageLoaded(object sender, RoutedEventArgs e)
         {
+            ThemeChange.SelectionChanged -= ThemeChange_SelectionChanged;
+            ColorThemeComboBox.SelectionChanged -= ColorThemeComboBox_SelectionChanged;
+            ColorGrid.SelectionChanged -= ColorGrid_SelectionChanged;
+
             ThemeChange.SelectionChanged += ThemeChange_SelectionChanged;
             ColorThemeComboBox.SelectionChanged += ColorThemeComboBox_SelectionChanged;
-
             ColorGrid.SelectionChanged += ColorGrid_SelectionChanged;
         }
 
@@ -144,20 +147,22 @@ namespace Rise.App.Settings
                     break;
 
                 case GlazeTypes.CustomColor:
-                    var color = (NamedColor)ColorGrid.SelectedItem;
-                    var col = color.Color;
-
-                    ViewModel.GlazeColors = Color.FromArgb(25, col.R, col.G, col.B);
+                    if (ColorGrid.SelectedItem is NamedColor color)
+                    {
+                        var col = color.Color;
+                        ViewModel.GlazeColors = Color.FromArgb(25, col.R, col.G, col.B);
+                    }
                     break;
             }
         }
 
         private void ColorGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            var color = (NamedColor)e.AddedItems[0];
-            var col = color.Color;
-
-            ViewModel.GlazeColors = Color.FromArgb(25, col.R, col.G, col.B);
+            if (e.AddedItems.Count > 0 && e.AddedItems[0] is NamedColor color)
+            {
+                var col = color.Color;
+                ViewModel.GlazeColors = Color.FromArgb(25, col.R, col.G, col.B);
+            }
         }
 
         private async void ChangeThemeTip_ActionButtonClick(Microsoft.UI.Xaml.Controls.TeachingTip sender, object args)

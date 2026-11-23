@@ -1,4 +1,4 @@
-﻿using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Input;
 using System;
 using System.Collections.Generic;
 using Windows.Foundation.Metadata;
@@ -13,52 +13,16 @@ namespace Rise.Common.Helpers
     /// <summary>
     /// NavigationHelper aids in navigation between pages.  It provides commands used to 
     /// navigate back and forward as well as registers for standard mouse and keyboard 
-    /// shortcuts used to go back and forward in Windows and the hardware back button in
-    /// Windows Phone.  In addition it integrates SuspensionManger to handle process lifetime
-    /// management and state management when navigating between pages.
+    /// shortcuts used to go back and forward in Windows.  In addition it integrates
+    /// SuspensionManager to handle process lifetime management and state management when
+    /// navigating between pages.
     /// </summary>
-    /// <example>
-    /// To make use of NavigationHelper, follow these two steps or
-    /// start with a BasicPage or any other Page item template other than BlankPage.
-    /// 
-    /// 1) Create an instance of the NavigationHelper somewhere such as in the 
-    ///     constructor for the page and register a callback for the LoadState and 
-    ///     SaveState events.
-    /// <code>
-    ///     public MyPage()
-    ///     {
-    ///         this.InitializeComponent();
-    ///         var navigationHelper = new NavigationHelper(this);
-    ///         this.navigationHelper.LoadState += navigationHelper_LoadState;
-    ///         this.navigationHelper.SaveState += navigationHelper_SaveState;
-    ///     }
-    ///     
-    ///     private async void navigationHelper_LoadState(object sender, LoadStateEventArgs e)
-    ///     { }
-    ///     private async void navigationHelper_SaveState(object sender, LoadStateEventArgs e)
-    ///     { }
-    /// </code>
-    /// 
-    /// 2) Register the page to call into the NavigationHelper whenever the page participates 
-    ///     in navigation by overriding the <see cref="Views.UI.Xaml.Controls.Page.OnNavigatedTo"/> 
-    ///     and <see cref="Views.UI.Xaml.Controls.Page.OnNavigatedFrom"/> events.
-    /// <code>
-    ///     protected override void OnNavigatedTo(NavigationEventArgs e)
-    ///     {
-    ///         navigationHelper.OnNavigatedTo(e);
-    ///     }
-    ///     
-    ///     protected override void OnNavigatedFrom(NavigationEventArgs e)
-    ///     {
-    ///         navigationHelper.OnNavigatedFrom(e);
-    ///     }
-    /// </code>
-    /// </example>
     [WebHostHidden]
-    public partial class NavigationHelper : DependencyObject
+    public partial class NavigationHelper
     {
-        private Page Page { get; set; }
+        private Page Page { get; }
         private Frame Frame => Page.Frame;
+        private bool _isHooked;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="NavigationHelper"/> class.
@@ -67,35 +31,28 @@ namespace Rise.Common.Helpers
         /// This reference allows for frame manipulation.</param>
         public NavigationHelper(Page page)
         {
-            Page = page;
+            Page = page ?? throw new ArgumentNullException(nameof(page));
 
-            // When this page is part of the visual tree make two changes:
-            // 1) Map application view state to visual state for the page
-            // 2) Handle hardware navigation requests
             Page.Loaded += (sender, e) =>
             {
-#if WINDOWS_PHONE_APP
-                Windows.Phone.UI.Input.HardwareButtons.BackPressed += HardwareButtons_BackPressed;
-#else
-                // Listen to the window directly so focus isn't required
-                Window.Current.CoreWindow.Dispatcher.AcceleratorKeyActivated +=
-                    CoreDispatcher_AcceleratorKeyActivated;
-                Window.Current.CoreWindow.PointerPressed +=
-                    CoreWindow_PointerPressed;
-#endif
+                var coreWindow = Window.Current?.CoreWindow;
+                if (coreWindow == null || _isHooked)
+                    return;
+
+                _isHooked = true;
+                coreWindow.Dispatcher.AcceleratorKeyActivated += CoreDispatcher_AcceleratorKeyActivated;
+                coreWindow.PointerPressed += CoreWindow_PointerPressed;
             };
 
-            // Undo the same changes when the page is no longer visible
             Page.Unloaded += (sender, e) =>
             {
-#if WINDOWS_PHONE_APP
-                Windows.Phone.UI.Input.HardwareButtons.BackPressed -= HardwareButtons_BackPressed;
-#else
-                Window.Current.CoreWindow.Dispatcher.AcceleratorKeyActivated -=
-                    CoreDispatcher_AcceleratorKeyActivated;
-                Window.Current.CoreWindow.PointerPressed -=
-                    CoreWindow_PointerPressed;
-#endif
+                var coreWindow = Window.Current?.CoreWindow;
+                if (coreWindow == null || !_isHooked)
+                    return;
+
+                _isHooked = false;
+                coreWindow.Dispatcher.AcceleratorKeyActivated -= CoreDispatcher_AcceleratorKeyActivated;
+                coreWindow.PointerPressed -= CoreWindow_PointerPressed;
             };
         }
 
@@ -146,21 +103,6 @@ namespace Rise.Common.Helpers
             if (Frame != null && Frame.CanGoForward) Frame.GoForward();
         }
 
-#if WINDOWS_PHONE_APP
-        /// <summary>
-        /// Invoked when the hardware back button is pressed. For Windows Phone only.
-        /// </summary>
-        /// <param name="sender">Instance that triggered the event.</param>
-        /// <param name="e">Event data describing the conditions that led to the event.</param>
-        private void HardwareButtons_BackPressed(object sender, Windows.Phone.UI.Input.BackPressedEventArgs e)
-        {
-            if (GoBackCommand.CanExecute(null))
-            {
-                e.Handled = true;
-                GoBackCommand.Execute(null);
-            }
-        }
-#else
         /// <summary>
         /// Invoked on every keystroke, including system keys such as Alt key combinations, when
         /// this page is active and occupies the entire window.  Used to detect keyboard navigation
@@ -178,9 +120,12 @@ namespace Rise.Common.Helpers
             if ((e.EventType == CoreAcceleratorKeyEventType.SystemKeyDown ||
                 e.EventType == CoreAcceleratorKeyEventType.KeyDown) &&
                 (virtualKey == VirtualKey.Left || virtualKey == VirtualKey.Right ||
-                (int)virtualKey == 166 || (int)virtualKey == 167))
+                virtualKey == VirtualKey.GoBack || virtualKey == VirtualKey.GoForward))
             {
-                var coreWindow = Window.Current.CoreWindow;
+                var coreWindow = Window.Current?.CoreWindow;
+                if (coreWindow == null)
+                    return;
+
                 var downState = CoreVirtualKeyStates.Down;
                 bool menuKey = (coreWindow.GetKeyState(VirtualKey.Menu) & downState) == downState;
                 bool controlKey = (coreWindow.GetKeyState(VirtualKey.Control) & downState) == downState;
@@ -188,14 +133,14 @@ namespace Rise.Common.Helpers
                 bool noModifiers = !menuKey && !controlKey && !shiftKey;
                 bool onlyAlt = menuKey && !controlKey && !shiftKey;
 
-                if (((int)virtualKey == 166 && noModifiers) ||
+                if ((virtualKey == VirtualKey.GoBack && noModifiers) ||
                     (virtualKey == VirtualKey.Left && onlyAlt))
                 {
                     // When the previous key or Alt+Left are pressed navigate back
                     e.Handled = true;
                     GoBackCommand.Execute(null);
                 }
-                else if (((int)virtualKey == 167 && noModifiers) ||
+                else if ((virtualKey == VirtualKey.GoForward && noModifiers) ||
                     (virtualKey == VirtualKey.Right && onlyAlt))
                 {
                     // When the next key or Alt+Right are pressed navigate forward
@@ -221,7 +166,7 @@ namespace Rise.Common.Helpers
             if (properties.IsLeftButtonPressed || properties.IsRightButtonPressed ||
                 properties.IsMiddleButtonPressed) return;
 
-            // If back or foward are pressed (but not both) navigate appropriately
+            // If back or forward are pressed (but not both) navigate appropriately
             bool backPressed = properties.IsXButton1Pressed;
             bool forwardPressed = properties.IsXButton2Pressed;
             if (backPressed ^ forwardPressed)
@@ -231,7 +176,6 @@ namespace Rise.Common.Helpers
                 if (forwardPressed) GoForwardCommand.Execute(null);
             }
         }
-#endif
 
         #endregion
 
@@ -249,7 +193,7 @@ namespace Rise.Common.Helpers
         /// Register this event on the current page to preserve
         /// state associated with the current page in case the
         /// application is suspended or the page is discarded from
-        /// the navigaqtion cache.
+        /// the navigation cache.
         /// </summary>
         public event SaveStateEventHandler SaveState;
 
@@ -285,7 +229,8 @@ namespace Rise.Common.Helpers
                 // Pass the navigation parameter and preserved page state to the page, using
                 // the same strategy for loading suspended state and recreating pages discarded
                 // from cache
-                LoadState?.Invoke(this, new LoadStateEventArgs(e.Parameter, (Dictionary<string, object>)frameState[_pageKey]));
+                frameState.TryGetValue(_pageKey, out var stateObj);
+                LoadState?.Invoke(this, new LoadStateEventArgs(e.Parameter, stateObj as Dictionary<string, object>));
             }
         }
 
