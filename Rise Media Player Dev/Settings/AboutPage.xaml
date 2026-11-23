@@ -95,18 +95,6 @@
                 Margin="0,-10,0,0"
                 Style="{StaticResource SubheaderTextBlockStyle}"
                 Text="{markup:ResourceHelper Name=/Settings/AboutMoreH}" />
-            <labs:SettingsCard
-                Description="{markup:ResourceHelper Name=/Settings/AboutSocialDesc}"
-                Header="{markup:ResourceHelper Name=/Settings/AboutSocialTitle}"
-                HeaderIcon="{ui:FontIcon Glyph=&#xE15F;}">
-                <StackPanel Orientation="Horizontal">
-                    <HyperlinkButton
-                        Padding="8"
-                        Content="Discord"
-                        NavigateUri="{x:Bind constants:URLs.Discord}" />
-
-                </StackPanel>
-            </labs:SettingsCard>
 
             <labs:SettingsCard
                 ActionIcon="{ui:FontIcon Glyph=&#xE2B4;}"

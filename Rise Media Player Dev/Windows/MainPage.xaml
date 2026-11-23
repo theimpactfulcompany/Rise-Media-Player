@@ -442,6 +442,7 @@
             BackRequested="NavigationView_BackRequested"
             Canvas.ZIndex="0"
             CompactModeThresholdWidth="800"
+            IsSettingsVisible="False"
             DisplayModeChanged="NavigationViewControl_DisplayModeChanged"
             ExpandedModeThresholdWidth="800"
             FooterMenuItemsSource="{x:Bind NavDataSource.AllItems.FooterItems}"

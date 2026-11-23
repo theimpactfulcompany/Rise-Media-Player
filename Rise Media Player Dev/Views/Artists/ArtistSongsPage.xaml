@@ -228,7 +228,7 @@
 
                         <Grid
                             x:Name="TopTracksCard"
-                            Height="200"
+                            Height="20"
                             RowSpacing="12"
                             Style="{StaticResource GridCardStyle}">
                             <Grid.RowDefinitions>

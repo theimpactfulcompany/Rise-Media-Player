@@ -110,7 +110,6 @@ namespace Rise.App.Views
                 RiseSpan.Text = "Rice";
 
             SetupNavigation();
-
         }
 
         private void SetupNavigation()
@@ -119,6 +118,16 @@ namespace Rise.App.Views
 
             var playlists = (NavigationItemDestination)NavDataSource.GetItem("PlaylistsPage");
             playlists.Children = PBackend.Items;
+        }
+
+        private void GoToScanningVisualState(string stateName)
+        {
+            _ = FindName("IndexingTip");
+
+            if (FindName("IndexingProgressRing") is DependencyObject)
+            {
+                _ = VisualStateManager.GoToState(this, stateName, false);
+            }
         }
 
         private async void OnPageLoaded(object sender, RoutedEventArgs args)
@@ -142,19 +151,19 @@ namespace Rise.App.Views
                     SViewModel.IsFirstLaunch = false;
 
                     await Task.Delay(300);
-                    _ = VisualStateManager.GoToState(this, "ScanningState", false);
+                    GoToScanningVisualState("ScanningState");
 
                     await Task.Run(MViewModel.StartFullCrawlAsync);
                     return;
                 }
                 else
                 {
-                    // Only run the neccessary steps for startup - change tracking & artist image fetching.
+                    // Only run the necessary steps for startup - change tracking & artist image fetching.
                     if (SViewModel.FetchOnlineData)
                     {
                         await Task.Delay(300);
 
-                        _ = VisualStateManager.GoToState(this, "FetchingMetadataState", false);
+                        GoToScanningVisualState("FetchingMetadataState");
                         await MViewModel.FetchArtistsArtAsync();
                     }
 
@@ -168,7 +177,7 @@ namespace Rise.App.Views
             }
 
             if (MViewModel.IsScanning)
-                _ = VisualStateManager.GoToState(this, "ScanningState", false);
+                GoToScanningVisualState("ScanningState");
         }
 
         private void OnPageUnloaded(object sender, RoutedEventArgs e)
@@ -336,7 +345,7 @@ namespace Rise.App.Views
             await Dispatcher.RunAsync(CoreDispatcherPriority.Normal, async () =>
             {
                 await Task.Delay(60);
-                _ = VisualStateManager.GoToState(this, "ScanningState", false);
+                GoToScanningVisualState("ScanningState");
             });
         }
 
@@ -344,7 +353,7 @@ namespace Rise.App.Views
         {
             await Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
             {
-                _ = VisualStateManager.GoToState(this, "FetchingMetadataState", false);
+                GoToScanningVisualState("FetchingMetadataState");
             });
         }
 
@@ -352,7 +361,7 @@ namespace Rise.App.Views
         {
             await Dispatcher.RunAsync(CoreDispatcherPriority.Normal, async () =>
             {
-                _ = VisualStateManager.GoToState(this, "ScanningDoneState", false);
+                GoToScanningVisualState("ScanningDoneState");
 
                 await Task.Delay(2500);
             });
@@ -712,8 +721,7 @@ namespace Rise.App.Views
         private void GoToScanningSettings_Click(object sender, RoutedEventArgs e)
             => _ = Frame.Navigate(typeof(AllSettingsPage));
 
-
         private void DismissButton_Click(object sender, RoutedEventArgs e)
-            => _ = VisualStateManager.GoToState(this, "NotScanningState", false);
+            => GoToScanningVisualState("NotScanningState");
     }
 }
