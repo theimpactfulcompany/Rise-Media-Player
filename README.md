@@ -7,9 +7,6 @@
 <h1 align="center">Bring your media to a whole new level.</h1>
 
 <p align="center">
-    <a href='https://www.microsoft.com/store/r/9PCSZTMTT55Z'>
-      <img src='https://github.com/Rise-Software/Rise-Media-Player/assets/74561130/3d7edcaf-26d8-4453-a751-29b851721abd'alt='Get it from Microsoft' />
-    </a>
     <a href='https://github.com/Rise-Software/Rise-Media-Player/releases/latest'>
       <img src='https://github.com/Rise-Software/Rise-Media-Player/assets/74561130/60deb402-0c8e-4579-80e6-69cb7b19cd43'alt='Get it from GitHub' />
     </a>
@@ -17,7 +14,9 @@
 
 ## Development Hiatus
 
-Rise Media Player has been in development hiatus for over 2 years at this point. We're making a comeback soon.
+Rise Media Player has been in development hiatus for over 2 years at this point. We're making a comeback soon. Microsoft Store versions have been removed for now. 
+
+* To install the latest version, Alpha 3.1 hotfix, please uninstall your current version first as this new build uses a new Windows 11 SDK and certificate, as both had either expired or had been deprecated.
 
 ## Features
 
@@ -47,8 +46,8 @@ In order to learn how to build RiseMP from source, check out [the documentation]
 
 #### Prerequisites
 
-- [Visual Studio 2022](https://visualstudio.microsoft.com/vs/) with the following individual components:
-  - Windows SDK
+- [Visual Studio 2026](https://visualstudio.microsoft.com/vs/) with the following individual components:
+  - Windows SDK version 26100 or later.
   - Windows app development workload
 - Git for Windows
 
@@ -85,8 +84,6 @@ To build Rise Media Player for development, open the `RiseMP.sln` item in Visual
 ## Contributing
 
 Want to contribute to this project? Let us know with an [issue](https://github.com/Rise-Software/Rise-Media-Player/issues) that communicates your intent to create a [pull request](https://github.com/Rise-Software/Rise-Media-Player/pulls).
-> [!NOTE]
-> **Looking for a place to start?** Check out [our plan for Beta 1](https://github.com/orgs/Rise-Software/projects/3/views/1), which details planned features and changes..
 
 ## Credits
 
