@@ -1,108 +1,17 @@
+<div align="center">
+    <img src="https://github.com/user-attachments/assets/f3dda4dc-c4d0-47a2-9c27-c021c649edac"
+        title="Rise Media Player" alt="Rise Media Player iOS icon" width="120" />
+    <h1>Rise Media Player</h1>
+    <p>
+        Bring your media to a whole new level.
+    </p>
+    <!-- <a href="https://rayne.studio/rise">
+        rise @ rayne.studio
+    </a> -->
+</div>
+
+<br/>
+
 <p align="center">
-    <a href='https://github.com/Rise-Software/Rise-Media-Player'>
-      <img src="https://github.com/Rise-Software/Rise-Media-Player/assets/74561130/67a1ea8f-1d0f-4c1d-9688-1912ec20f779" alt="RiseMP" />
-    </a>
+    <b>More coming here soon.</b>
 </p>
-
-<h1 align="center">Bring your media to a whole new level.</h1>
-
-<p align="center">
-    <a href='https://github.com/Rise-Software/Rise-Media-Player/releases/latest'>
-      <img src='https://github.com/Rise-Software/Rise-Media-Player/assets/74561130/60deb402-0c8e-4579-80e6-69cb7b19cd43'alt='Get it from GitHub' />
-    </a>
-</p>
-
-## Development Hiatus
-
-Rise Media Player has been in development hiatus for over 2 years at this point. We're making a comeback soon. Microsoft Store versions have been removed for now. 
-
-* To install the latest version, Alpha 3.1 hotfix, please uninstall your current version first as this new build uses a new Windows 11 SDK and certificate, as both had either expired or had been deprecated.
-
-## Features
-
-* **Music and video playback**: Play music and videos from any source across your device and the internet in high quality
-* **Sorting for songs, albums and videos**: Sort and find any track
-* **Now Playing bar**: Stunningly designed "now playing" experience
-* **Fullscreen music experience**: Comes complete with a beautiful fullscreen listening interface
-* **`last.fm` integration**: Find your favourite tracks from last.fm in Rise
-* **Internet based artist images**: Carefully curated artist images
-* **Playlists**: Sort all your music into playlists
-* **Modern Settings UI**: Customise your experience in RiseMP with themes, change the layout and modify your connected services
-* **OneDrive support**: Browse music from your favourite cloud provider
-* **Properties window**: View metadata attached to your songs
-* **Colourful icons setting**: Customise your experience with icons with a Windows 11 style
-* **Casting to devices, repeat, shuffle**: Cast music with ease anywhere in your home
-* **Insider exclusives**: Exclusive wallpapers and feature sneak peeks for those enlisted in the programme
-* **Pick up where you left off support**: Support for history and remembering exactly where you were when you last opened the app
-
-## Downloads
-
-**If you are an Insider already, just click the Download button and you'll be taken to a page to download **
-In order to learn how to build RiseMP from source, check out [the documentation](./BUILD.md).
-
-[![Download](https://user-images.githubusercontent.com/74561130/137598555-649c77c7-1719-4aa3-8017-8b41283de730.png)](https://github.com/Rise-Software/Rise-Media-Player/releases)    ![divide](https://user-images.githubusercontent.com/74561130/137599566-866fef7d-967e-4ad1-91da-8014d1752b93.png)    [![JoinInsider](https://user-images.githubusercontent.com/74561130/137585885-7f98b4de-5067-41ee-bdb4-2a04fea4b90a.png)](http://www.bit.ly/risesoftinsider)
-
-### Building from source
-
-#### Prerequisites
-
-- [Visual Studio 2026](https://visualstudio.microsoft.com/vs/) with the following individual components:
-  - Windows SDK version 26100 or later.
-  - Windows app development workload
-- Git for Windows
-
-```sh
-git clone https://github.com/Rise-Software/Rise-Media-Player.git
-```
-
-#### Prepare credentials
-
-Create a file called `LastFM.cs` in `Rise.Common.Constants`, and paste the following contents:
-
-```cs
-namespace Rise.Common.Constants
-{
-    /// <summary>
-    /// Contains last.fm related constants.
-    /// </summary>
-    public class LastFM
-    {
-        public const string Key = "YourAPIKey";
-        public const string Secret = "YourSecret";
-
-        public const string VaultResource = "RiseMP - LastFM account";
-    }
-}
-```
-
-This will be enough to build the app, but if you want last.fm support, you should [get a last.fm API key](https://www.last.fm/api#getting-started). After doing this, replace the value of the `Key` and `Secret` constants with your own API key and secret key respectively. After doing this, last.fm functionality should be enabled.
-
-#### Build the project
-
-To build Rise Media Player for development, open the `RiseMP.sln` item in Visual Studio. Right-click on the `Rise.App` packaging project in solution explorer and select ‘Set as Startup item’. Then press <kbd>F5</kbd> or your selected build & deploy keybind to build the app and launch it.
-
-## Contributing
-
-Want to contribute to this project? Let us know with an [issue](https://github.com/Rise-Software/Rise-Media-Player/issues) that communicates your intent to create a [pull request](https://github.com/Rise-Software/Rise-Media-Player/pulls).
-
-## Credits
-
-When I started this work, had very little experience, couldn't have even gotten off the ground properly without these wonderful people: 
-* [**Omar Salas (@YourOrdinaryCat)**](https://github.com/yourordinarycat):
-* [**SimpleBear (@itsWindows11)**](https://github.com/itswindows11):
-
-And most recently, we've had the wonderful [**Lamparter (@itsWindows11)**](https://github.com/lamparter): doing some great work in getting the project up and running during its development hiatus.
-
-# Follow my other projects
-<table style="width: 100%; border: 0;">
-    <tr>
-        <td style="width: 30%; padding-right: 20px; vertical-align: top; border: 0;">
-            <img src="https://github.com/user-attachments/assets/4ce798b2-2e3e-4352-87c0-9859269c2521" width="512" height="512" alt="Descriptive Alt Text" style="width: 100%; border-radius: 8px;">
-        </td>
-        <td style="width: 70%; vertical-align: top;">
-            <h2>Hey! I'm Joseph.</h2>
-            <p>I started work on this app many years ago and hope to restart development soon! Check out  <a href="https://github.com/theimpactfulcompany">THE IMPACTFUL COMPANY</a> for more stuff like this, and feel free to <a href="https://github.com/josephbeattie">give me a follow</a> if you'd like to see what I'm working on privately.</p>
-        </td>
-    </tr>
-</table>
-
